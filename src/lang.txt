@@ -1,4 +1,6 @@
 fun main() {
+    let x32 = 32523
+    let y = 3253.352
     hello(how, are, you)
     return
 }

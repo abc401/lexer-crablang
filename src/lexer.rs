@@ -1,32 +1,35 @@
-use std::{fs::read_to_string};
+use std::fs::read_to_string;
 
 #[derive(Debug)]
 pub enum Token {
     Ident(String),
-    KeyWord(KeyWordType),
+    Keyword(KeywordType),
+    Literal(String),
     OpenParen,
     CloseParen,
     OpenCurlyBrace,
     CloseCurlyBrace,
     Comma,
-    Invalid
+    Equals,
+    Invalid(char),
 }
-
 
 #[derive(Debug)]
-pub enum KeyWordType {
+pub enum KeywordType {
     Fun,
-    Return
+    Return,
+    Let,
 }
 
-impl KeyWordType {
+impl KeywordType {
     fn from_str(str: &str) -> Option<Self> {
-        use KeyWordType::*;
+        use KeywordType::*;
 
         match str {
             "fun" => Some(Fun),
             "return" => Some(Return),
-            _ => None
+            "let" => Some(Let),
+            _ => None,
         }
     }
 }
@@ -50,12 +53,19 @@ impl Lexer {
         return Self::new(contents);
     }
 
-    fn peek_ch(& self) -> Option<char> {
+    fn peek_ch(&self) -> Option<char> {
         let len = self.contents.len();
         if !(0..len).contains(&self.next_index) {
             return None;
         }
         return Some(self.contents[self.next_index]);
+    }
+
+    fn next_ch_eq(&self, ch: char) -> bool {
+        if let Some(peeked) = self.peek_ch() {
+            return peeked == ch;
+        }
+        return false;
     }
 
     fn next_ch(&mut self) -> Option<char> {
@@ -64,15 +74,30 @@ impl Lexer {
         return Some(ch);
     }
 
+    fn capture_while<F>(&mut self, predicate: F) -> String
+    where
+        F: Fn(char) -> bool,
+    {
+        let mut capture = String::new();
+        while let Some(ch) = self.peek_ch() {
+            if predicate(ch) {
+                capture.push(ch);
+                self.next_ch();
+            } else {
+                break;
+            }
+        }
+        return capture;
+    }
+
     fn skip_whitespace(&mut self) {
         while let Some(ch) = self.peek_ch() {
             if !ch.is_ascii_whitespace() {
-                return
+                return;
             }
             self.next_ch();
         }
     }
-
 }
 
 impl Iterator for Lexer {
@@ -89,6 +114,17 @@ impl Iterator for Lexer {
             '{' => OpenCurlyBrace,
             '}' => CloseCurlyBrace,
             ',' => Comma,
+            '=' => Equals,
+            ch if ch.is_numeric() => {
+                let mut literal =
+                    String::from(ch) + self.capture_while(|c| c.is_numeric()).as_str();
+                if self.next_ch_eq('.') {
+                    self.next_ch();
+                    literal += ".";
+                    literal += self.capture_while(|c| c.is_numeric()).as_str();
+                }
+                Literal(literal)
+            }
             ch if ch.is_alphabetic() || ch == '_' => {
                 let mut ident = String::from(ch);
                 while let Some(ch) = self.peek_ch() {
@@ -99,13 +135,13 @@ impl Iterator for Lexer {
                     }
                 }
 
-                if let Some(keyword_type) = KeyWordType::from_str(ident.as_str()) {
-                    return Some(KeyWord(keyword_type));
+                if let Some(keyword_type) = KeywordType::from_str(ident.as_str()) {
+                    Keyword(keyword_type)
+                } else {
+                    Ident(ident)
                 }
-                
-                Ident(ident)
             }
-            _ => Token::Invalid
+            _ => Token::Invalid(ch),
         };
         return Some(token);
     }
