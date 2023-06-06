@@ -1,15 +1,34 @@
 use std::{fs::read_to_string};
 
-
 #[derive(Debug)]
 pub enum Token {
     Ident(String),
+    KeyWord(KeyWordType),
     OpenParen,
     CloseParen,
     OpenCurlyBrace,
     CloseCurlyBrace,
     Comma,
     Invalid
+}
+
+
+#[derive(Debug)]
+pub enum KeyWordType {
+    Fun,
+    Return
+}
+
+impl KeyWordType {
+    fn from_str(str: &str) -> Option<Self> {
+        use KeyWordType::*;
+
+        match str {
+            "fun" => Some(Fun),
+            "return" => Some(Return),
+            _ => None
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -62,7 +81,6 @@ impl Iterator for Lexer {
     fn next(&mut self) -> Option<Self::Item> {
         use Token::*;
 
-
         self.skip_whitespace();
         let ch = self.next_ch()?;
         let token = match ch {
@@ -80,6 +98,11 @@ impl Iterator for Lexer {
                         break;
                     }
                 }
+
+                if let Some(keyword_type) = KeyWordType::from_str(ident.as_str()) {
+                    return Some(KeyWord(keyword_type));
+                }
+                
                 Ident(ident)
             }
             _ => Token::Invalid
