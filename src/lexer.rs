@@ -1,16 +1,12 @@
-use std::fs::read_to_string;
+use std::{fs::read_to_string, ops::Add};
 
 #[derive(Debug)]
 pub enum Token {
     Ident(String),
     Keyword(KeywordType),
     Literal(String),
-    OpenParen,
-    CloseParen,
-    OpenCurlyBrace,
-    CloseCurlyBrace,
-    Comma,
-    Equals,
+    Op(OpType),
+    Punctuator(PunctuatorType),
     Invalid(char),
 }
 
@@ -19,6 +15,35 @@ pub enum KeywordType {
     Fun,
     Return,
     Let,
+}
+
+#[derive(Debug)]
+pub enum PunctuatorType {
+    Comma,
+    OpenCurlyBrace,
+    CloseCurlyBrace,
+    OpenParen,
+    CloseParen
+}
+
+#[derive(Debug)]
+pub enum OpType {
+    Arithmatic(ArithmaticType),
+    Assign(AssignType),
+}
+
+#[derive(Debug)]
+pub enum AssignType {
+    Simple
+}
+
+#[derive(Debug)]
+pub enum ArithmaticType {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod
 }
 
 impl KeywordType {
@@ -46,6 +71,10 @@ impl Lexer {
             contents: contents.chars().collect(),
             next_index: 0,
         };
+    }
+
+    fn is_punctuator(ch: char) -> bool {
+        return "{}(),".contains(ch);
     }
 
     pub fn from_file(path: &str) -> Self {
@@ -98,6 +127,50 @@ impl Lexer {
             self.next_ch();
         }
     }
+
+    fn capture_punctuator(&mut self) -> Token {
+        use PunctuatorType::*;
+
+        let Some(ch) = self.next_ch() else {
+            panic!("Unexpected EOF!");
+        };
+
+        let punctuator_type = match ch {
+            '{' => OpenCurlyBrace,
+            '}' => CloseCurlyBrace,
+            '(' => OpenParen,
+            ')' => CloseParen,
+            ',' => Comma,
+            _ => panic!("Invalid punctuator token!")
+        };
+
+        return Token::Punctuator(punctuator_type);
+    }
+
+    fn is_operator(ch: char) -> bool {
+        return "+-*/%=".contains(ch);
+    }
+
+    fn capture_operator(&mut self) -> Token {
+        use OpType::*;
+        use ArithmaticType::*;
+
+        let Some(ch) = self.next_ch() else {
+            panic!("Unexpected EOF!");
+        };
+
+        let op_type = match ch {
+            '+' => Arithmatic(Add),
+            '-' => Arithmatic(Sub),
+            '*' => Arithmatic(Mul),
+            '/' => Arithmatic(Div),
+            '%' => Arithmatic(Mod),
+            '=' => Assign(AssignType::Simple),
+            _ => panic!("Invalid operator token: {}", ch)
+        };
+
+        return Token::Op(op_type);
+    }
 }
 
 impl Iterator for Lexer {
@@ -107,17 +180,13 @@ impl Iterator for Lexer {
         use Token::*;
 
         self.skip_whitespace();
-        let ch = self.next_ch()?;
+        let ch = self.peek_ch()?;
         let token = match ch {
-            '(' => OpenParen,
-            ')' => CloseParen,
-            '{' => OpenCurlyBrace,
-            '}' => CloseCurlyBrace,
-            ',' => Comma,
-            '=' => Equals,
+            ch if Self::is_punctuator(ch) => self.capture_punctuator(),
+            ch if Self::is_operator(ch) => self.capture_operator(),
             ch if ch.is_numeric() => {
                 let mut literal =
-                    String::from(ch) + self.capture_while(|c| c.is_numeric()).as_str();
+                    String::new() + self.capture_while(|c| c.is_numeric()).as_str();
                 if self.next_ch_eq('.') {
                     self.next_ch();
                     literal += ".";
@@ -126,7 +195,7 @@ impl Iterator for Lexer {
                 Literal(literal)
             }
             ch if ch.is_alphabetic() || ch == '_' => {
-                let mut ident = String::from(ch);
+                let mut ident = String::new();
                 while let Some(ch) = self.peek_ch() {
                     if ch.is_alphanumeric() || ch == '_' {
                         ident.push(self.next_ch().unwrap());
@@ -141,7 +210,10 @@ impl Iterator for Lexer {
                     Ident(ident)
                 }
             }
-            _ => Token::Invalid(ch),
+            _ => {
+                self.next_ch();
+                Token::Invalid(ch)
+            }
         };
         return Some(token);
     }

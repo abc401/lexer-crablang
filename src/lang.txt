@@ -1,6 +1,11 @@
 fun main() {
     let x32 = 32523
-    let y = 3253.352
-    hello(how, are, you)
+    x32 = x32 - 32535
+    x32 = x32 + 32535
+    x32 = x32 / 32535
+    x32 = x32 * 32535
+    x32 = x32 % 32535
+    let y = 3253.
+    hello(34324, are, you)
     return
 }
