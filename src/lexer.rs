@@ -18,30 +18,35 @@ pub enum KeywordType {
 
 #[derive(Debug, Clone, Copy)]
 pub enum OpType {
+    // Arithmatic Operators
     Add, Sub, Mul, Div, Mod,
 
-    LessThan,
-    GreaterThan,
-    LessThanEqualTo,
-    GreaterThanEqualTo,
-    EqualTo,
-    NotEqualTo,
+    // Relational Operators
+    LessThan, GreaterThan,
+    LessThanEqualTo, GreaterThanEqualTo,
+    EqualTo, NotEqualTo,
 
+    // Assignment Operators
     Assign,
-    AddAssign,
-    SubAssign,
-    MulAssign,
-    DivAssign,
+    AddAssign, SubAssign,
+    MulAssign, DivAssign,
     ModAssign,
 
+    // Punctuators
     Comma,
-    OpenCurlyBrace,
-    CloseCurlyBrace,
-    OpenParen,
-    CloseParen,
+    OpenCurlyBrace, CloseCurlyBrace,
+    OpenParen, CloseParen,
+
+    // Logical Operators
+    And, Or, Not,
+
+    // Bitwise Operators
+    BitwiseAnd, BitwiseOr, BitwiseNot
 }
 
 const OPERATOR_MAPPING: &[(&str, OpType)] = &[
+    ("&&", OpType::And),
+    ("||", OpType::Or),
     ("==", OpType::EqualTo),
     ("!=", OpType::NotEqualTo),
     ("<=", OpType::LessThanEqualTo),
@@ -51,6 +56,11 @@ const OPERATOR_MAPPING: &[(&str, OpType)] = &[
     ("/=", OpType::DivAssign),
     ("*=", OpType::MulAssign),
     ("%=", OpType::ModAssign),
+
+    ("&",  OpType::BitwiseAnd),
+    ("|",  OpType::BitwiseOr),
+    ("~",  OpType::BitwiseNot),
+    ("!",  OpType::Not),
     ("<",  OpType::LessThan),
     (">",  OpType::GreaterThan),
     ("+",  OpType::Add),
@@ -59,6 +69,7 @@ const OPERATOR_MAPPING: &[(&str, OpType)] = &[
     ("*",  OpType::Mul),
     ("%",  OpType::Mod),
     ("=",  OpType::Assign),
+
     ("{",  OpType::OpenCurlyBrace),
     ("}",  OpType::CloseCurlyBrace),
     ("(",  OpType::OpenParen),
@@ -129,12 +140,7 @@ impl Lexer {
     }
 
     fn skip_whitespace(&mut self) {
-        while let Some(ch) = self.peek_ch() {
-            if !ch.is_ascii_whitespace() {
-                return;
-            }
-            self.next_ch();
-        }
+        self.capture_while(|c| c.is_ascii_whitespace());
     }
 
     fn capture(&mut self, str: &str) -> bool {

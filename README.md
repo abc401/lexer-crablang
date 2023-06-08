@@ -51,6 +51,18 @@ Following are the different supported operators:
 - Less than or equal to  (`<=`)
 - Greater than or equal to (`>=`)
 
+### Logical Operators
+
+- And (`&&`)
+- Or (`||`)
+- Not (`!`)
+
+### Bitwise Operators
+
+- And (`&`)
+- Or (`|`)
+- Not (`~`)
+
 ### Punctuators
 
 - Scope Delimiters (`{}`)
