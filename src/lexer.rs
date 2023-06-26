@@ -6,7 +6,7 @@ pub enum Token {
     Keyword(KeywordType),
     Literal(String),
     Op(OpType),
-    Invalid(char),
+    Invalid(String),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -156,9 +156,9 @@ impl Lexer {
         return true;
     }
 
-    fn capture_invalid(&mut self, ch: char) -> Token {
-        self.next_ch();
-        return Token::Invalid(ch);
+    fn capture_invalid_from_next(&mut self) -> Option<Token> {
+        let ch = self.next_ch()?;
+        return Some(Token::Invalid(ch.into()));
     }
 
     fn capture_operator(&mut self) -> Option<OpType> {
@@ -179,34 +179,47 @@ impl Iterator for Lexer {
 
         self.skip_whitespace();
         let ch = self.peek_ch()?;
-        let token = match ch {
+        return match ch {
 
-            ch if !ch.is_alphanumeric() => if let Some(op_type) = self.capture_operator() {
-                Op(op_type)
-            } else {
-                self.capture_invalid(ch)
+            '\"' => {
+                // TODO: Escape Sequences
+                self.next_ch();
+                let mut capture = String::from("\"");
+                capture += &self.capture_while(|c| !"\n\"".contains(c));
+                if self.capture("\"") {
+                    capture += "\"";
+                    Some(Literal(capture))
+                } else {
+                    Some(Invalid(capture))
+                }
             }
+
             ch if ch.is_numeric() => {
                 let mut literal = self.capture_while(|c| c.is_numeric());
+
                 if self.capture(".") {
                     literal += ".";
                     literal += &self.capture_while(|c| c.is_numeric());
                 }
-                Literal(literal)
+                Some(Literal(literal))
             }
             ch if ch.is_alphabetic() || ch == '_' => {
-                let ident = self.capture_while(|c| c.is_alphanumeric() || ch == '_');
+                let ident = self.capture_while(|c| c.is_alphanumeric() || c == '_');
 
                 if let Some(keyword_type) = KeywordType::from_str(&ident) {
-                    Keyword(keyword_type)
+                    Some(Keyword(keyword_type))
                 } else {
-                    Ident(ident)
+                    Some(Ident(ident))
                 }
             }
+            ch if !ch.is_alphanumeric() => if let Some(op_type) = self.capture_operator() {
+                Some(Op(op_type))
+            } else {
+                self.capture_invalid_from_next()
+            }
             _ => {
-                self.capture_invalid(ch)
+                panic!("Unreachable!!");
             }
         };
-        return Some(token);
     }
 }
