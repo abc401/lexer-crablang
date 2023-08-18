@@ -27,44 +27,44 @@ Following are the different supported operators:
 
 ### Arithmatic Operators
 
-- Addition (`+`)
-- Subtraction (`-`)
-- Multiplication (`*`)
-- Division (`/`)
-- Modulus (`%`)
+- Addition `+`
+- Subtraction `-`
+- Multiplication `*`
+- Division `/`
+- Modulus `%`
 
 ### Assignment Operators
 
-- Simple Assignment (`=`)
-- Subtract Assignment (`-=`)
-- Divide Assignment (`/=`)
-- Multiply Assignment (`*=`)
-- Add Assignment (`+=`)
-- Modulus Assignment (`%=`)
+- Simple Assignment `=`
+- Subtract Assignment `-=`
+- Divide Assignment `/=`
+- Multiply Assignment `*=`
+- Add Assignment `+=`
+- Modulus Assignment `%=`
 
 ### Relational Operators
 
-- Equal to (`==`)
-- Not equal (`!=`)
-- Less than (`<`)
-- Greater than (`>`)
-- Less than or equal to  (`<=`)
-- Greater than or equal to (`>=`)
+- Equal to `==`
+- Not equal `!=`
+- Less than `<`
+- Greater than `>`
+- Less than or equal to  `<=`
+- Greater than or equal to `>=`
 
 ### Logical Operators
 
-- And (`&&`)
-- Or (`||`)
-- Not (`!`)
+- And `&&`
+- Or `||`
+- Not `!`
 
 ### Bitwise Operators
 
-- And (`&`)
-- Or (`|`)
-- Not (`~`)
+- And `&`
+- Or `|`
+- Not `~`
 
 ### Punctuators
 
-- Scope Delimiters (`{}`)
-- Commas (`,`)
-- Paranthesis (`()`)
+- Scope Delimiters `{}`
+- Commas `,`
+- Paranthesis `()`
