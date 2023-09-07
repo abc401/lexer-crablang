@@ -1,4 +1,4 @@
-use std::{fs::read_to_string};
+use std::fs::read_to_string;
 
 #[derive(Debug)]
 pub enum Token {
@@ -19,29 +19,44 @@ pub enum KeywordType {
 #[derive(Debug, Clone, Copy)]
 pub enum OpType {
     // Arithmatic Operators
-    Add, Sub, Mul, Div, Mod,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
 
     // Relational Operators
-    LessThan, GreaterThan,
-    LessThanEqualTo, GreaterThanEqualTo,
-    EqualTo, NotEqualTo,
+    LessThan,
+    GreaterThan,
+    LessThanEqualTo,
+    GreaterThanEqualTo,
+    EqualTo,
+    NotEqualTo,
 
     // Assignment Operators
     Assign,
-    AddAssign, SubAssign,
-    MulAssign, DivAssign,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    DivAssign,
     ModAssign,
 
     // Punctuators
     Comma,
-    OpenCurlyBrace, CloseCurlyBrace,
-    OpenParen, CloseParen,
+    OpenCurlyBrace,
+    CloseCurlyBrace,
+    OpenParen,
+    CloseParen,
 
     // Logical Operators
-    And, Or, Not,
+    And,
+    Or,
+    Not,
 
     // Bitwise Operators
-    BitwiseAnd, BitwiseOr, BitwiseNot
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseNot,
 }
 
 const OPERATOR_MAPPING: &[(&str, OpType)] = &[
@@ -56,25 +71,23 @@ const OPERATOR_MAPPING: &[(&str, OpType)] = &[
     ("/=", OpType::DivAssign),
     ("*=", OpType::MulAssign),
     ("%=", OpType::ModAssign),
-
-    ("&",  OpType::BitwiseAnd),
-    ("|",  OpType::BitwiseOr),
-    ("~",  OpType::BitwiseNot),
-    ("!",  OpType::Not),
-    ("<",  OpType::LessThan),
-    (">",  OpType::GreaterThan),
-    ("+",  OpType::Add),
-    ("-",  OpType::Sub),
-    ("/",  OpType::Div),
-    ("*",  OpType::Mul),
-    ("%",  OpType::Mod),
-    ("=",  OpType::Assign),
-
-    ("{",  OpType::OpenCurlyBrace),
-    ("}",  OpType::CloseCurlyBrace),
-    ("(",  OpType::OpenParen),
-    (")",  OpType::CloseParen),
-    (",",  OpType::Comma),
+    ("&", OpType::BitwiseAnd),
+    ("|", OpType::BitwiseOr),
+    ("~", OpType::BitwiseNot),
+    ("!", OpType::Not),
+    ("<", OpType::LessThan),
+    (">", OpType::GreaterThan),
+    ("+", OpType::Add),
+    ("-", OpType::Sub),
+    ("/", OpType::Div),
+    ("*", OpType::Mul),
+    ("%", OpType::Mod),
+    ("=", OpType::Assign),
+    ("{", OpType::OpenCurlyBrace),
+    ("}", OpType::CloseCurlyBrace),
+    ("(", OpType::OpenParen),
+    (")", OpType::CloseParen),
+    (",", OpType::Comma),
 ];
 
 impl KeywordType {
@@ -180,7 +193,6 @@ impl Iterator for Lexer {
         self.skip_whitespace();
         let ch = self.peek_ch()?;
         return match ch {
-
             '\"' => {
                 // TODO: Escape Sequences
                 self.next_ch();
@@ -212,10 +224,12 @@ impl Iterator for Lexer {
                     Some(Ident(ident))
                 }
             }
-            ch if !ch.is_alphanumeric() => if let Some(op_type) = self.capture_operator() {
-                Some(Op(op_type))
-            } else {
-                self.capture_invalid_from_next()
+            ch if !ch.is_alphanumeric() => {
+                if let Some(op_type) = self.capture_operator() {
+                    Some(Op(op_type))
+                } else {
+                    self.capture_invalid_from_next()
+                }
             }
             _ => {
                 panic!("Unreachable!!");
