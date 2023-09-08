@@ -1,6 +1,0 @@
-fun main() {
-    let x32 = "fd afd;jfkel;"
-    let y = 3253.
-    hello(34324, are, you)
-    return
-}

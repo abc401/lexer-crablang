@@ -1,11 +1,12 @@
 mod lexer;
+mod parser;
 
-use lexer::Lexer;
+use parser::Parser;
 
 fn main() {
-    let path = "src/lang.txt";
-    let lexer = Lexer::from_file(path);
-    for token in lexer {
-        println!("{:?}", token);
-    }
+    let path = "code.toyl";
+    let mut parser = Parser::from_file(path);
+    println!("Started parsing.");
+    parser.parse();
+    println!("{:?}", parser.program)
 }
