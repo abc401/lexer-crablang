@@ -5,16 +5,37 @@ use std::{
 
 #[derive(Debug, Clone, Default)]
 pub struct Token {
+    pub loc: Location,
+    pub tokentype: TokenType,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Location {
     pub file: Option<String>,
     pub row: usize,
     pub col: usize,
-    pub tokentype: TokenType,
+}
+
+impl Display for Location {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.file.is_none() {
+            write!(f, "({}:{})", self.row, self.col)
+        } else {
+            write!(
+                f,
+                "{}:{}:{}",
+                self.file.as_ref().unwrap(),
+                self.row,
+                self.col
+            )
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TokenType {
     Ident(String),
-    IntLiteral(i32),
+    IntLiteral(String),
     Let,
     EOF,
     Assign,
@@ -29,25 +50,21 @@ impl Default for TokenType {
 
 #[derive(Debug)]
 pub struct Lexer {
-    file: Option<String>,
     source: Vec<char>,
     peek_ch: Option<char>,
     peek_token: Token,
     cursor: usize,
-    row: usize,
-    col: usize,
+    loc: Location,
 }
 
 impl Lexer {
     pub fn new(source: String) -> Self {
         let mut ret = Self {
-            file: None,
             source: source.chars().collect(),
             peek_ch: None,
             peek_token: Default::default(),
             cursor: 0,
-            row: 0,
-            col: 0,
+            loc: Default::default(),
         };
         if ret.source.len() > 0 {
             ret.peek_ch = Some(ret.source[0]);
@@ -59,13 +76,15 @@ impl Lexer {
     pub fn from_file(path: &str) -> Self {
         let source = read_to_string(path).expect("Provided input file does not exist!");
         let mut ret = Self {
-            file: Some(path.into()),
             source: source.chars().collect(),
             peek_ch: None,
             peek_token: Default::default(),
             cursor: 0,
-            row: 0,
-            col: 0,
+            loc: Location {
+                file: Some(path.into()),
+                row: 0,
+                col: 0,
+            },
         };
         if ret.source.len() > 0 {
             ret.peek_ch = Some(ret.source[0]);
@@ -93,32 +112,15 @@ impl Lexer {
                 self.consume_ch();
                 self.peek_token = self.make_token(TT::Assign);
             }
-            // ';' => {
-            //     self.consume_ch();
-            //     self.peek_token = self.make_token(TT::SemiColon);
-            // }
             ch if ch.is_ascii_alphabetic() || ch == '_' => self.ident_or_keyword(),
             ch if ch.is_ascii_digit() => self.int_literal(),
             ch => self.report_illegal(&String::from(ch)),
         };
     }
 
-    fn report_illegal(&self, lexeme: &str) {
-        if self.file.is_none() {
-            println!(
-                "[Lexer] [code]:{}:{}: Illegal: {}",
-                self.row, self.col, lexeme
-            );
-        } else {
-            println!(
-                "[Lexer] {}:{}:{}: Illegal: {}",
-                self.file.as_ref().unwrap(),
-                self.row,
-                self.col,
-                lexeme
-            )
-        }
-        panic!()
+    fn report_illegal(&self, lexeme: &str) -> ! {
+        println!("[Lexer] {}: Illegal: {}", self.loc, lexeme);
+        panic!();
     }
 
     fn consume_ch(&mut self) {
@@ -127,10 +129,10 @@ impl Lexer {
         }
 
         if let Some('\n') = self.peek_ch {
-            self.row += 1;
-            self.col = 0;
+            self.loc.row += 1;
+            self.loc.col = 0;
         } else {
-            self.col += 1;
+            self.loc.col += 1;
         }
 
         self.cursor += 1;
@@ -149,9 +151,7 @@ impl Lexer {
 
     fn make_token(&self, tokentype: TokenType) -> Token {
         let token = Token {
-            file: self.file.clone(),
-            row: self.row,
-            col: self.col,
+            loc: self.loc.clone(),
             tokentype,
         };
         println!("[Lexer] {:?}", token);
@@ -159,6 +159,7 @@ impl Lexer {
     }
 
     fn int_literal(&mut self) {
+        // TODO: Handle 64 bit int literals
         let Some(ch) = self.peek_ch else {
             panic!("[Lexer.int_literal] Called eventhough no characters are left!");
         };
@@ -186,7 +187,7 @@ impl Lexer {
         }
 
         println!("[Lexer] Consumed int literal.");
-        self.peek_token = self.make_token(TT::IntLiteral(declexeme_to_intlit(lexeme)));
+        self.peek_token = self.make_token(TT::IntLiteral(lexeme));
     }
 
     fn ident_or_keyword(&mut self) {
@@ -216,22 +217,4 @@ impl Lexer {
             }
         };
     }
-}
-
-fn declexeme_to_intlit(lexeme: String) -> i32 {
-    println!("[Lexer] Converting int literal lexeme into i32.");
-    let mut int_literal = 0_i32;
-    for ch in lexeme.chars() {
-        int_literal *= 10;
-        let Some(digit) = ch.to_digit(10) else {
-            println!("[Lexer][lexeme_to_intlit] Incorrect parsing for lexeme: {}", lexeme);
-            panic!()
-        };
-        int_literal += digit as i32;
-    }
-    println!(
-        "[Lexer]\n\tLexeme: `{}`\n\tIntLiteral: `{}`",
-        lexeme, int_literal
-    );
-    return int_literal;
 }

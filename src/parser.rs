@@ -2,14 +2,21 @@ use crate::lexer::{Token, TokenType as TT};
 
 use super::lexer::Lexer;
 use core::panic;
+use std::slice::Iter;
 
 #[derive(Debug)]
 pub struct Program {
     statements: Vec<Statement>,
 }
 
+impl Program {
+    pub fn iter(&self) -> Iter<'_, Statement> {
+        self.statements.iter()
+    }
+}
+
 #[derive(Debug)]
-enum Statement {
+pub enum Statement {
     Declare(String),
     Initialize(String, RExpression),
     Assign(LExpression, RExpression),
@@ -17,14 +24,14 @@ enum Statement {
 use Statement as Stmt;
 
 #[derive(Debug)]
-enum RExpression {
-    IntLiteral(i32),
+pub enum RExpression {
+    IntLiteral(String),
     Ident(String),
 }
 use RExpression as RExp;
 
 #[derive(Debug)]
-enum LExpression {
+pub enum LExpression {
     Ident(String),
 }
 use LExpression as LExp;
@@ -147,8 +154,8 @@ impl Parser {
 
 fn unexpected_token(token: &Token) -> ! {
     println!(
-        "[Parser] {}:{} Unexpected token: {:?}",
-        token.row, token.col, token.tokentype
+        "[Parser] {}: Unexpected token: {:?}",
+        token.loc, token.tokentype
     );
     panic!()
 }
