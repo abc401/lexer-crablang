@@ -5,48 +5,37 @@ use std::{
 
 #[derive(Debug, Clone, Default)]
 pub struct Token {
-    pub loc: Location,
+    pub file: Option<String>,
+    pub start: Location,
+    pub end: Location,
     pub tokentype: TokenType,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Location {
-    pub file: Option<String>,
     pub row: usize,
     pub col: usize,
 }
 
 impl Default for Location {
     fn default() -> Self {
-        return Self {
-            file: None,
-            row: 1,
-            col: 1,
-        };
+        return Self { row: 1, col: 1 };
     }
 }
 
 impl Display for Location {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.file.is_none() {
-            write!(f, "({}:{})", self.row, self.col)
-        } else {
-            write!(
-                f,
-                "{}:{}:{}",
-                self.file.as_ref().unwrap(),
-                self.row,
-                self.col
-            )
-        }
+        write!(f, "{}:{}", self.row, self.col)
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TokenType {
     StartOfFile,
+    NewLine,
     Ident(String),
     IntLiteral(String),
+    Illegal(String),
     Let,
     EndOfFile,
     Assign,
@@ -59,7 +48,7 @@ impl Default for TokenType {
 }
 
 pub enum LexingError {
-    IllegalToken(Location, String),
+    IllegalToken(Token),
 }
 use LexingError as LErr;
 
@@ -78,13 +67,12 @@ impl Lexer {
         let mut ret = Self {
             source: source.chars().collect(),
             peek_ch: None,
-            peek_token: Default::default(),
-            cursor: 0,
-            loc: Location {
+            peek_token: Token {
                 file: Some(path.into()),
-                row: 1,
-                col: 1,
+                ..Default::default()
             },
+            cursor: 0,
+            loc: Location { row: 1, col: 1 },
         };
         if ret.source.len() > 0 {
             ret.peek_ch = Some(ret.source[0]);
@@ -100,25 +88,32 @@ impl Lexer {
         return self.peek_token.clone();
     }
 
+    fn set_peek_token(&mut self, tokentype: TokenType) {
+        self.peek_token.tokentype = tokentype;
+        self.peek_token.end = self.loc;
+    }
+
     pub fn consume(&mut self) -> Result<(), LexingError> {
         self.skip_whitespace();
-        self.peek_token.loc = self.loc.clone();
+        self.peek_token.start = self.loc.clone();
         let Some(ch) = self.peek_ch else {
-            self.peek_token.tokentype = TT::EndOfFile;
+            self.set_peek_token(TT::EndOfFile);
             return Ok(());
         };
         match ch {
+            '\n' => {
+                self.consume_ch();
+                self.set_peek_token(TT::NewLine);
+            }
             '=' => {
                 self.consume_ch();
-                self.peek_token.tokentype = TT::Assign;
+                self.set_peek_token(TT::Assign);
             }
             ch if ch.is_ascii_alphabetic() || ch == '_' => self.ident_or_keyword(),
             ch if ch.is_ascii_digit() => self.int_literal()?,
             ch => {
-                return Err(LErr::IllegalToken(
-                    self.peek_token.loc.clone(),
-                    String::from(ch),
-                ))
+                self.set_peek_token(TT::Illegal(String::from(ch)));
+                return Err(LErr::IllegalToken(self.peek_token.clone()));
             }
         };
         return Ok(());
@@ -145,19 +140,13 @@ impl Lexer {
     }
 
     fn skip_whitespace(&mut self) {
-        while self.peek_ch.map_or(false, |ch| ch.is_whitespace()) {
+        while self
+            .peek_ch
+            .map_or(false, |ch| ch.is_whitespace() && ch != '\n')
+        {
             self.consume_ch();
         }
     }
-
-    // fn make_token(&self, tokentype: TokenType) -> Token {
-    //     let token = Token {
-    //         loc: self.loc.clone(),
-    //         tokentype,
-    //     };
-    //     println!("[Lexer] {:?}", token);
-    //     return token;
-    // }
 
     fn int_literal(&mut self) -> Result<(), LexingError> {
         // TODO: Handle 64 bit int literals
@@ -183,10 +172,11 @@ impl Lexer {
 
         if illegal_lexeme.len() > 0 {
             lexeme.extend(illegal_lexeme.chars());
-            return Err(LErr::IllegalToken(self.peek_token.loc.clone(), lexeme));
+            self.set_peek_token(TT::Illegal(lexeme));
+            return Err(LErr::IllegalToken(self.peek_token.clone()));
         }
 
-        self.peek_token.tokentype = TT::IntLiteral(lexeme);
+        self.set_peek_token(TT::IntLiteral(lexeme));
         return Ok(());
     }
 
@@ -210,12 +200,12 @@ impl Lexer {
 
         match lexeme.as_str() {
             "let" => {
-                self.peek_token.tokentype = TT::Let;
+                self.set_peek_token(TT::Let);
             }
             _ => {
-                self.peek_token.tokentype = TT::Ident(lexeme);
+                self.set_peek_token(TT::Ident(lexeme));
             }
         };
-        println!("{:?}", self.peek_token);
+        // println!("{:?}", self.peek_token);
     }
 }

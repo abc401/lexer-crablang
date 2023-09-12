@@ -2,13 +2,14 @@ $$
 \begin{align}
     Program &\to [Stmt]^* \\
     Stmt &\to \begin{cases}
-        \text{let } [Ident] \\
-        \text{let } [Ident] = [RExp] \\
-        [LExp] = [RExp]
+        \text{let } [Ident] [NewLine] \\
+        \text{let } [Ident] = [RExp] [NewLine] \\
+        [RExp] [NewLine] \\
+        [LExp] = [RExp] [NewLine] \\
     \end{cases} \\
 
     RExp &\to \begin{cases}
-        [LExpr] \\
+        [LExp] \\
         [IntLit] \\
         [BinExp] \\
     \end{cases} \\

@@ -1,7 +1,7 @@
 use std::{collections::HashSet, fs::File, io::Write, process::Command};
 
 use crate::{
-    parser::{LExpression as LE, Program, RExpression as RE, Statement as Stmt},
+    parser::{LExpression as LExp, Program, RExpression as RExp, Statement as Stmt},
     semantic_anal::SymTable,
 };
 
@@ -101,7 +101,7 @@ pub fn genasm(program: &Program, symtable: SymTable) -> AsmCode {
                     l_ident.lexeme
                 ));
                 match rexp {
-                    RE::Ident(r_ident) => {
+                    RExp::LExp(LExp::Ident(r_ident)) => {
                         let r_sym = symtable.get(&r_ident.lexeme).expect(&format!(
                             "[AsmGen] Identifier `{}` in program is not present in symtable",
                             r_ident.lexeme
@@ -110,29 +110,29 @@ pub fn genasm(program: &Program, symtable: SymTable) -> AsmCode {
                         asm.stmt("");
                         asm.comment(&format!("let {} = {}", l_ident.lexeme, r_ident.lexeme));
                         asm.stmt("sub rsp, 4");
-                        asm.stmt(&format!("mov rax, qword [rbp-{}]", r_sym.rbp_offset));
-                        asm.stmt(&format!("mov qword [rbp-{}], rax", l_sym.rbp_offset));
+                        asm.stmt(&format!("mov rax, dword [rbp-{}]", r_sym.rbp_offset));
+                        asm.stmt(&format!("mov dword [rbp-{}], rax", l_sym.rbp_offset));
                         asm.stmt("");
                     }
-                    RE::IntLiteral(intlit) => {
+                    RExp::IntLiteral(intlit) => {
                         asm.stmt("");
                         asm.comment(&format!("let {} = {}", l_ident.lexeme, intlit.lexeme));
                         asm.stmt("sub rsp, 4");
                         asm.stmt(&format!(
-                            "mov qword [rbp-{}], {}",
+                            "mov dword [rbp-{}], {}",
                             l_sym.rbp_offset, intlit.lexeme
                         ));
                     }
                 }
             }
             Stmt::Assign(lexp, rexp) => {
-                let LE::Ident(l_ident) = lexp;
+                let LExp::Ident(l_ident) = lexp;
                 let l_sym = symtable.get(&l_ident.lexeme).expect(&format!(
                     "[AsmGen] Identifier `{}` in program is not present in symtable",
                     l_ident.lexeme
                 ));
                 match rexp {
-                    RE::Ident(r_ident) => {
+                    RExp::LExp(LExp::Ident(r_ident)) => {
                         let r_sym = symtable.get(&r_ident.lexeme).expect(&format!(
                             "[AsmGen] Identifier `{}` in program is not present in symtable",
                             r_ident.lexeme
@@ -140,19 +140,20 @@ pub fn genasm(program: &Program, symtable: SymTable) -> AsmCode {
 
                         asm.stmt("");
                         asm.comment(&format!("{} = {}", l_ident.lexeme, r_ident.lexeme));
-                        asm.stmt(&format!("mov rax, qword [rbp-{}]", r_sym.rbp_offset));
-                        asm.stmt(&format!("mov qword [rbp-{}], rax", l_sym.rbp_offset));
+                        asm.stmt(&format!("mov rax, dword [rbp-{}]", r_sym.rbp_offset));
+                        asm.stmt(&format!("mov dword [rbp-{}], rax", l_sym.rbp_offset));
                     }
-                    RE::IntLiteral(intlit) => {
+                    RExp::IntLiteral(intlit) => {
                         asm.stmt("");
                         asm.comment(&format!("{} = {}", l_ident.lexeme, intlit.lexeme));
                         asm.stmt(&format!(
-                            "mov qword [rbp-{}], {}",
+                            "mov dword [rbp-{}], {}",
                             l_sym.rbp_offset, intlit.lexeme
                         ));
                     }
                 }
             }
+            _ => {}
         }
     }
 
