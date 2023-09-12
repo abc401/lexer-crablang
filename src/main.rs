@@ -35,7 +35,7 @@ fn main() -> std::io::Result<()> {
         }
         Ok(symtable) => symtable,
     };
-    // println!("[Semantic Analysis] {:?}", symtable);
+    println!("[Semantic Analysis] {:?}", symtable);
     let asmcode = genasm(&parser.program, symtable);
     asmcode.compile(path)?;
     return Ok(());

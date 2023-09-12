@@ -1,6 +1,7 @@
 use std::{
     fmt::{Debug, Display},
     fs::read_to_string,
+    vec,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -39,6 +40,7 @@ pub enum TokenType {
     Let,
     EndOfFile,
     Assign,
+    Plus,
 }
 use TokenType as TT;
 impl Default for TokenType {
@@ -56,24 +58,35 @@ use LexingError as LErr;
 pub struct Lexer {
     source: Vec<char>,
     peek_ch: Option<char>,
-    peek_token: Token,
+    tokens: Vec<Token>,
+    next_token: Token,
+
+    token_cursor: usize,
     cursor: usize,
+    file: String,
     loc: Location,
 }
 
 impl Lexer {
     pub fn from_file(path: &str) -> Self {
         let source = read_to_string(path).expect("Provided input file does not exist!");
+        let first_token = Token {
+            file: Some(path.into()),
+            start: Location::default(),
+            end: Location::default(),
+            tokentype: TT::StartOfFile,
+        };
         let mut ret = Self {
             source: source.chars().collect(),
             peek_ch: None,
-            peek_token: Token {
-                file: Some(path.into()),
-                ..Default::default()
-            },
+            tokens: vec![first_token],
+            next_token: Token::default(),
+            file: path.into(),
             cursor: 0,
-            loc: Location { row: 1, col: 1 },
+            token_cursor: 0,
+            loc: Location::default(),
         };
+        ret.next_token.file = Some(path.into());
         if ret.source.len() > 0 {
             ret.peek_ch = Some(ret.source[0]);
         }
@@ -85,35 +98,57 @@ impl Lexer {
     }
 
     pub fn peek(&self) -> Token {
-        return self.peek_token.clone();
+        return self.tokens[self.token_cursor].clone();
     }
 
-    fn set_peek_token(&mut self, tokentype: TokenType) {
-        self.peek_token.tokentype = tokentype;
-        self.peek_token.end = self.loc;
+    fn make_next_token(&mut self) {
+        self.next_token.start = self.loc;
+    }
+
+    fn set_next_token(&mut self, tokentype: TokenType) {
+        self.next_token.tokentype = tokentype;
+        self.next_token.end = self.loc;
+        self.tokens.push(self.next_token.clone());
+        self.token_cursor += 1;
+    }
+
+    fn rewind(&mut self) {
+        if self.token_cursor <= 0 {
+            return;
+        }
+        self.token_cursor -= 1;
     }
 
     pub fn consume(&mut self) -> Result<(), LexingError> {
+        if self.token_cursor < self.tokens.len() - 1 {
+            self.token_cursor += 1;
+            return Ok(());
+        }
         self.skip_whitespace();
-        self.peek_token.start = self.loc.clone();
+        self.make_next_token();
         let Some(ch) = self.peek_ch else {
-            self.set_peek_token(TT::EndOfFile);
+            self.set_next_token(TT::EndOfFile);
             return Ok(());
         };
         match ch {
             '\n' => {
                 self.consume_ch();
-                self.set_peek_token(TT::NewLine);
+                self.set_next_token(TT::NewLine);
+            }
+            '+' => {
+                println!("[Lexer] plus.");
+                self.consume_ch();
+                self.set_next_token(TT::Plus);
             }
             '=' => {
                 self.consume_ch();
-                self.set_peek_token(TT::Assign);
+                self.set_next_token(TT::Assign);
             }
             ch if ch.is_ascii_alphabetic() || ch == '_' => self.ident_or_keyword(),
             ch if ch.is_ascii_digit() => self.int_literal()?,
             ch => {
-                self.set_peek_token(TT::Illegal(String::from(ch)));
-                return Err(LErr::IllegalToken(self.peek_token.clone()));
+                self.set_next_token(TT::Illegal(String::from(ch)));
+                return Err(LErr::IllegalToken(self.peek()));
             }
         };
         return Ok(());
@@ -172,11 +207,11 @@ impl Lexer {
 
         if illegal_lexeme.len() > 0 {
             lexeme.extend(illegal_lexeme.chars());
-            self.set_peek_token(TT::Illegal(lexeme));
-            return Err(LErr::IllegalToken(self.peek_token.clone()));
+            self.set_next_token(TT::Illegal(lexeme));
+            return Err(LErr::IllegalToken(self.peek()));
         }
 
-        self.set_peek_token(TT::IntLiteral(lexeme));
+        self.set_next_token(TT::IntLiteral(lexeme));
         return Ok(());
     }
 
@@ -200,10 +235,10 @@ impl Lexer {
 
         match lexeme.as_str() {
             "let" => {
-                self.set_peek_token(TT::Let);
+                self.set_next_token(TT::Let);
             }
             _ => {
-                self.set_peek_token(TT::Ident(lexeme));
+                self.set_next_token(TT::Ident(lexeme));
             }
         };
         // println!("{:?}", self.peek_token);

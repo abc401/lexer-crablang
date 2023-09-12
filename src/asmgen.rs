@@ -1,7 +1,7 @@
 use std::{collections::HashSet, fs::File, io::Write, process::Command};
 
 use crate::{
-    parser::{LExpression as LExp, Program, RExpression as RExp, Statement as Stmt},
+    parser::{BinExp, LExpression as LExp, Program, RExpression as RExp, Statement as Stmt},
     semantic_anal::SymTable,
 };
 
@@ -123,6 +123,8 @@ pub fn genasm(program: &Program, symtable: SymTable) -> AsmCode {
                             l_sym.rbp_offset, intlit.lexeme
                         ));
                     }
+                    RExp::BinExp(BinExp::Add(arg1, arg2)) => {}
+                    _ => {}
                 }
             }
             Stmt::Assign(lexp, rexp) => {

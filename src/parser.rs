@@ -48,17 +48,15 @@ pub struct IntLiteral {
     pub end: Location,
     pub lexeme: String,
 }
-use IntLiteral as ILit;
-
-impl IntLiteral {
-    fn new(token: Token) -> Self {
-        let TT::IntLiteral(lexeme) = token.tokentype else {
+impl From<Token> for IntLiteral {
+    fn from(value: Token) -> Self {
+        let TT::IntLiteral(lexeme) = value.tokentype else {
             panic!("Non integer literal token passed to `IntLiteral` constructor.");
         };
         return Self {
-            file: token.file,
-            start: token.start,
-            end: token.end,
+            file: value.file,
+            start: value.start,
+            end: value.end,
             lexeme,
         };
     }
@@ -71,20 +69,25 @@ pub struct Identifier {
     pub end: Location,
     pub lexeme: String,
 }
-use Identifier as Id;
 
-impl Identifier {
-    fn new(token: Token) -> Self {
-        let TT::Ident(lexeme) = token.tokentype else {
+impl From<Token> for Identifier {
+    fn from(value: Token) -> Self {
+        let TT::Ident(lexeme) = value.tokentype else {
             panic!("Non-identifier token passed to `Identifier` constructor.");
         };
         return Self {
-            file: token.file,
-            start: token.start,
-            end: token.end,
+            file: value.file,
+            start: value.start,
+            end: value.end,
             lexeme,
         };
     }
+}
+
+#[derive(Debug)]
+pub enum Term {
+    Ident(Identifier),
+    IntLit(IntLiteral),
 }
 
 impl Program {
@@ -106,12 +109,43 @@ use Statement as Stmt;
 pub enum RExpression {
     LExp(LExpression),
     IntLiteral(IntLiteral),
+    BinExp(BinExp),
+}
+
+#[derive(Debug)]
+pub enum BinExp {
+    Term(Term),
+    Add(Box<BinExp>, Term),
+}
+impl From<Term> for BinExp {
+    fn from(value: Term) -> Self {
+        return BinExp::Term(value);
+    }
 }
 use RExpression as RExp;
 
-impl From<LExp> for RExp {
+impl From<LExpression> for RExpression {
     fn from(value: LExp) -> Self {
         return RExp::LExp(value);
+    }
+}
+
+impl From<Term> for RExpression {
+    fn from(value: Term) -> Self {
+        match value {
+            Term::Ident(ident) => RExp::LExp(LExp::Ident(ident)),
+            Term::IntLit(intlit) => RExp::IntLiteral(intlit),
+        }
+    }
+}
+
+impl From<BinExp> for RExpression {
+    fn from(value: BinExp) -> Self {
+        match value {
+            BinExp::Term(Term::Ident(ident)) => RExp::LExp(LExp::Ident(ident)),
+            BinExp::Term(Term::IntLit(intlit)) => RExp::IntLiteral(intlit),
+            bin_exp => RExp::BinExp(bin_exp),
+        }
     }
 }
 
@@ -214,7 +248,7 @@ impl Parser {
         match res {
             Ok(_) => {}
             Err(_) => {
-                self.newline("Expected a newline.")?;
+                self.newline("[assign_stmt_or_rexp] Expected a newline.")?;
                 let stmt = Stmt::RExp(lexp.into());
                 self.program.statements.push(stmt);
                 return Ok(());
@@ -227,18 +261,48 @@ impl Parser {
         return Ok(());
     }
 
-    fn rexp(&mut self, errmsg: impl Into<String>) -> Result<RExpression, ParsingError> {
-        let lexp = self.lexp();
-        if lexp.is_ok() {
-            return Ok(lexp.unwrap().into());
-        }
+    fn plus(&mut self, errmsg: impl Into<String>) -> Result<(), ParsingError> {
         let token = self.lexer.peek();
-        let rexp = match token.tokentype {
-            TT::IntLiteral(_) => RExp::IntLiteral(ILit::new(token)),
+        if matches!(token.tokentype, TT::Plus) {
+            self.lexer.consume()?;
+            return Ok(());
+        }
+        return Err(PErr::unexpected(token, errmsg));
+    }
+
+    fn rexp(&mut self, errmsg: impl Into<String>) -> Result<RExpression, ParsingError> {
+        let bin_exp = self.bin_exp(errmsg)?;
+        return Ok(bin_exp.into());
+    }
+
+    fn bin_exp(&mut self, errmsg: impl Into<String>) -> Result<BinExp, ParsingError> {
+        println!("Next token: {:?}", self.lexer.peek());
+        let term1 = self.term(errmsg)?;
+        println!("[bin_exp] found a term.");
+        if self.plus("").is_err() {
+            println!("Next token: {:?}", self.lexer.peek());
+            println!("[bin_exp] no plus.");
+
+            return Ok(term1.into());
+        }
+        let term2 = self.term("Expected a term for binary expression.")?;
+        let mut bin_exp = BinExp::Add(Box::new(term1.into()), term2);
+        while self.plus("").is_ok() {
+            let term_next = self.term("Expected a term for binary expression.")?;
+            bin_exp = BinExp::Add(Box::new(bin_exp), term_next);
+        }
+        return Ok(bin_exp);
+    }
+
+    fn term(&mut self, errmsg: impl Into<String>) -> Result<Term, ParsingError> {
+        let token = self.lexer.peek();
+        let term = match token.tokentype {
+            TT::Ident(_) => Term::Ident(token.into()),
+            TT::IntLiteral(_) => Term::IntLit(token.into()),
             _ => return Err(PErr::unexpected(token, errmsg)),
         };
         self.lexer.consume()?;
-        return Ok(rexp);
+        return Ok(term);
     }
 
     fn lexp(&mut self) -> Result<LExpression, ParsingError> {
@@ -247,7 +311,7 @@ impl Parser {
             return Err(PErr::unexpected(token, "An lexpression can only consist of an identifier."));
         };
         self.lexer.consume()?;
-        return Ok(LExp::Ident(Identifier::new(token)));
+        return Ok(LExp::Ident(token.into()));
     }
 
     fn ident(&mut self) -> Result<Identifier, ParsingError> {
@@ -257,7 +321,7 @@ impl Parser {
             return Err(PErr::unexpected(token, "Expected an identifier."));
         };
         self.lexer.consume()?;
-        return Ok(Id::new(token));
+        return Ok(token.into());
     }
 
     fn decl_or_init(&mut self) -> Result<(), ParsingError> {
@@ -272,11 +336,7 @@ impl Parser {
 
         let rexp = self.rexp("What do I initialize it to?")?;
 
-        let token = self.lexer.peek();
-        if !matches!(token.tokentype, TT::NewLine) {
-            return Err(PErr::unexpected(token, "Expected a newline."));
-        }
-        self.lexer.consume()?;
+        self.newline("[decl_or_init] Expected a newline.")?;
 
         let stmt = Stmt::Initialize(l_ident, rexp);
         self.program.statements.push(stmt);
