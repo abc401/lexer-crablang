@@ -48,6 +48,12 @@ pub struct IntLiteral {
     pub end: Location,
     pub lexeme: String,
 }
+
+impl Display for IntLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.lexeme)
+    }
+}
 impl From<Token> for IntLiteral {
     fn from(value: Token) -> Self {
         let TT::IntLiteral(lexeme) = value.tokentype else {
@@ -70,6 +76,12 @@ pub struct Identifier {
     pub lexeme: String,
 }
 
+impl Display for Identifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.lexeme)
+    }
+}
+
 impl From<Token> for Identifier {
     fn from(value: Token) -> Self {
         let TT::Ident(lexeme) = value.tokentype else {
@@ -88,6 +100,15 @@ impl From<Token> for Identifier {
 pub enum Term {
     Ident(Identifier),
     IntLit(IntLiteral),
+}
+
+impl Display for Term {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ident(ident) => write!(f, "{}", ident.lexeme),
+            Self::IntLit(intlit) => write!(f, "{}", intlit.lexeme),
+        }
+    }
 }
 
 impl Program {
@@ -109,20 +130,40 @@ use Statement as Stmt;
 pub enum RExpression {
     LExp(LExpression),
     IntLiteral(IntLiteral),
-    BinExp(BinExp),
+    AddTerms(Term, Term),
+    Add(Box<RExpression>, Term),
 }
 
-#[derive(Debug)]
-pub enum BinExp {
-    Term(Term),
-    Add(Box<BinExp>, Term),
-}
-impl From<Term> for BinExp {
-    fn from(value: Term) -> Self {
-        return BinExp::Term(value);
+impl Display for RExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RExp::AddTerms(term1, term2) => {
+                write!(f, "{} + {}", term1, term2)
+            }
+            RExp::Add(rexp, term) => {
+                write!(f, "{} + {}", *rexp, term)
+            }
+            RExp::IntLiteral(intlit) => {
+                write!(f, "{}", intlit)
+            }
+            RExp::LExp(LExp::Ident(ident)) => {
+                write!(f, "{}", ident)
+            }
+        }
     }
 }
+
 use RExpression as RExp;
+impl TryInto<Term> for RExp {
+    type Error = ();
+    fn try_into(self) -> Result<Term, Self::Error> {
+        match self {
+            Self::LExp(LExp::Ident(ident)) => Ok(Term::Ident(ident)),
+            Self::IntLiteral(intlit) => Ok(Term::IntLit(intlit)),
+            _ => return Err(()),
+        }
+    }
+}
 
 impl From<LExpression> for RExpression {
     fn from(value: LExp) -> Self {
@@ -135,16 +176,6 @@ impl From<Term> for RExpression {
         match value {
             Term::Ident(ident) => RExp::LExp(LExp::Ident(ident)),
             Term::IntLit(intlit) => RExp::IntLiteral(intlit),
-        }
-    }
-}
-
-impl From<BinExp> for RExpression {
-    fn from(value: BinExp) -> Self {
-        match value {
-            BinExp::Term(Term::Ident(ident)) => RExp::LExp(LExp::Ident(ident)),
-            BinExp::Term(Term::IntLit(intlit)) => RExp::IntLiteral(intlit),
-            bin_exp => RExp::BinExp(bin_exp),
         }
     }
 }
@@ -271,14 +302,7 @@ impl Parser {
     }
 
     fn rexp(&mut self, errmsg: impl Into<String>) -> Result<RExpression, ParsingError> {
-        let bin_exp = self.bin_exp(errmsg)?;
-        return Ok(bin_exp.into());
-    }
-
-    fn bin_exp(&mut self, errmsg: impl Into<String>) -> Result<BinExp, ParsingError> {
-        println!("Next token: {:?}", self.lexer.peek());
         let term1 = self.term(errmsg)?;
-        println!("[bin_exp] found a term.");
         if self.plus("").is_err() {
             println!("Next token: {:?}", self.lexer.peek());
             println!("[bin_exp] no plus.");
@@ -286,12 +310,12 @@ impl Parser {
             return Ok(term1.into());
         }
         let term2 = self.term("Expected a term for binary expression.")?;
-        let mut bin_exp = BinExp::Add(Box::new(term1.into()), term2);
+        let mut add_rexp = RExp::AddTerms(term1, term2);
         while self.plus("").is_ok() {
             let term_next = self.term("Expected a term for binary expression.")?;
-            bin_exp = BinExp::Add(Box::new(bin_exp), term_next);
+            add_rexp = RExp::Add(Box::new(add_rexp), term_next);
         }
-        return Ok(bin_exp);
+        return Ok(add_rexp);
     }
 
     fn term(&mut self, errmsg: impl Into<String>) -> Result<Term, ParsingError> {

@@ -7,8 +7,9 @@ use std::process::exit;
 
 use parser::Parser;
 
-use asmgen::genasm;
 use semantic_anal::analyze;
+
+use crate::asmgen::AsmCode;
 
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -36,7 +37,8 @@ fn main() -> std::io::Result<()> {
         Ok(symtable) => symtable,
     };
     println!("[Semantic Analysis] {:?}", symtable);
-    let asmcode = genasm(&parser.program, symtable);
+    let mut asmcode = AsmCode::default();
+    asmcode.genasm(&parser.program, symtable);
     asmcode.compile(path)?;
     return Ok(());
     // asmcode.write_to_file()
