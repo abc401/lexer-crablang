@@ -41,6 +41,7 @@ pub enum TokenType {
     EndOfFile,
     Assign,
     Plus,
+    Minus,
 }
 use TokenType as TT;
 impl Default for TokenType {
@@ -102,10 +103,12 @@ impl Lexer {
     }
 
     fn make_next_token(&mut self) {
+        // print!("[Lexer] start: {} ", self.loc);
         self.next_token.start = self.loc;
     }
 
     fn set_next_token(&mut self, tokentype: TokenType) {
+        // println!("end: {} type: {:?}", self.loc, tokentype);
         self.next_token.tokentype = tokentype;
         self.next_token.end = self.loc;
         self.tokens.push(self.next_token.clone());
@@ -134,11 +137,15 @@ impl Lexer {
             '\n' => {
                 self.consume_ch();
                 self.set_next_token(TT::NewLine);
+                // println!("[Lexer] {:?}", self.peek());
             }
             '+' => {
-                println!("[Lexer] plus.");
                 self.consume_ch();
                 self.set_next_token(TT::Plus);
+            }
+            '-' => {
+                self.consume_ch();
+                self.set_next_token(TT::Minus);
             }
             '=' => {
                 self.consume_ch();
@@ -159,15 +166,16 @@ impl Lexer {
             return;
         }
 
+        self.cursor += 1;
+
         if let Some('\n') = self.peek_ch {
             self.loc.row += 1;
             self.loc.col = 1;
-        } else {
+        } else if !self.is_eof() && self.source[self.cursor] != '\n' {
             self.loc.col += 1;
         }
 
-        self.cursor += 1;
-        if self.cursor < self.source.len() {
+        if !self.is_eof() {
             self.peek_ch = Some(self.source[self.cursor as usize]);
         } else {
             self.peek_ch = None;
@@ -198,7 +206,6 @@ impl Lexer {
             lexeme.push(self.peek_ch.unwrap());
             self.consume_ch();
         }
-
         let mut illegal_lexeme = String::new();
         while self.peek_ch.map_or(false, |ch| ch.is_ascii_alphanumeric()) {
             illegal_lexeme.push(self.peek_ch.unwrap());
@@ -212,6 +219,7 @@ impl Lexer {
         }
 
         self.set_next_token(TT::IntLiteral(lexeme));
+        // println!("[Lexer] [IntLiteral] {:?}", self.peek());
         return Ok(());
     }
 

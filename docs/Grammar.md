@@ -9,19 +9,14 @@ $$
     \end{cases} \\
 
     RExp &\to \begin{cases}
-        [LExp] \\
-        [IntLit] \\
-        [BinExp] \\
-    \end{cases} \\
-
-    BinExp &\to \begin{cases}
         [Term] \\
-        [BinExp] + [Term] \\
+        [RExp] + [Term] \\
+        [RExp] - [Term] \\
     \end{cases} \\
 
     Term &\to \begin{cases}
         [IntLit] \\
-        [Ident] \\
+        [LExp]
     \end{cases} \\
 
     LExp &\to \begin{cases}

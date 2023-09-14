@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::parser::{
     Identifier, LExpression as LExp, Program, RExpression as RExp, RExpression, Statement as Stmt,
+    Term,
 };
 
 #[derive(Debug)]
@@ -73,17 +74,33 @@ pub fn analyze(program: &Program) -> Result<SymTable, SematicError> {
     return Ok(symtable);
 }
 
-fn analyze_rexp(rexp: &RExpression, symtable: &mut SymTable) -> Result<(), SematicError> {
-    let RExp::LExp(LExp::Ident(r_ident)) = rexp else {
-        return Ok(());
-    };
-    let r_sym = symtable.get(&r_ident.lexeme);
-    if r_sym.is_none() {
-        return Err(SErr::UseOfUndeclaredIdent(r_ident.clone()));
+fn analyze_term(term: &Term, symtable: &SymTable) -> Result<(), SematicError> {
+    match term {
+        Term::IntLit(_) => Ok(()),
+        Term::LExp(LExp::Ident(ident)) => {
+            let sym = symtable.get(&ident.lexeme);
+            if sym.is_none() {
+                return Err(SErr::UseOfUndeclaredIdent(ident.clone()));
+            }
+            if !sym.unwrap().initialized {
+                return Err(SErr::UseOfUninitializedIdent(ident.clone()));
+            }
+            return Ok(());
+        }
     }
-    let r_sym = r_sym.unwrap();
-    if !r_sym.initialized {
-        return Err(SErr::UseOfUninitializedIdent(r_ident.clone()));
+}
+
+fn analyze_rexp(rexp: &RExpression, symtable: &SymTable) -> Result<(), SematicError> {
+    match rexp {
+        RExp::Term(term) => analyze_term(term, symtable)?,
+        RExp::Add(rexp, term) => {
+            analyze_rexp(rexp, symtable)?;
+            analyze_term(term, symtable)?;
+        }
+        RExp::Sub(rexp, term) => {
+            analyze_rexp(rexp, symtable)?;
+            analyze_term(term, symtable)?;
+        }
     }
     return Ok(());
 }

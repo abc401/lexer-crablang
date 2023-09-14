@@ -87,7 +87,7 @@ impl AsmCode {
 
     fn term(&mut self, term: &Term, symtable: &SymTable) {
         match term {
-            Term::Ident(ident) => self.ident(ident, symtable),
+            Term::LExp(LExp::Ident(ident)) => self.ident(ident, symtable),
             Term::IntLit(intlit) => self.intlit(intlit),
         }
     }
@@ -107,24 +107,19 @@ impl AsmCode {
 
     fn rexp(&mut self, rexp: &RExp, symtable: &SymTable) {
         match rexp {
-            RExp::AddTerms(term1, term2) => {
-                self.term(term1, symtable);
-                self.stmt("add eax, ebx");
-                self.term(term2, symtable);
-                self.stmt("add eax, ebx");
-            }
             RExp::Add(rexp, term) => {
                 self.rexp(rexp, symtable);
                 self.term(term, symtable);
                 self.stmt("add eax, ebx");
             }
-            RExp::IntLiteral(intlit) => {
-                self.intlit(intlit);
+            RExp::Term(term) => {
+                self.term(term, symtable);
                 self.stmt("mov eax, ebx");
             }
-            RExp::LExp(LExp::Ident(ident)) => {
-                self.ident(ident, symtable);
-                self.stmt("mov eax, ebx");
+            RExp::Sub(rexp, term) => {
+                self.rexp(rexp, symtable);
+                self.term(term, symtable);
+                self.stmt("sub eax, ebx");
             }
         }
     }

@@ -1,7 +1,10 @@
 use crate::lexer::{LexingError as LErr, Location, Token, TokenType as TT};
 
 use super::lexer::Lexer;
-use std::{fmt::Display, slice::Iter};
+use std::{
+    fmt::{write, Display},
+    slice::Iter,
+};
 
 #[derive(Debug)]
 pub enum ParsingError {
@@ -98,14 +101,14 @@ impl From<Token> for Identifier {
 
 #[derive(Debug)]
 pub enum Term {
-    Ident(Identifier),
+    LExp(LExpression),
     IntLit(IntLiteral),
 }
 
 impl Display for Term {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Ident(ident) => write!(f, "{}", ident.lexeme),
+            Self::LExp(LExp::Ident(ident)) => write!(f, "{}", ident.lexeme),
             Self::IntLit(intlit) => write!(f, "{}", intlit.lexeme),
         }
     }
@@ -126,28 +129,35 @@ pub enum Statement {
 }
 use Statement as Stmt;
 
+impl Display for Statement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Declare(ident) => write!(f, "Declare({})", ident),
+            Self::Assign(lexp, rexp) => write!(f, "Assign({}, {})", lexp, rexp),
+            Self::Initialize(ident, rexp) => write!(f, "Initialize({}, {})", ident, rexp),
+            Self::RExp(rexp) => write!(f, "RExp({})", rexp),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum RExpression {
-    LExp(LExpression),
-    IntLiteral(IntLiteral),
-    AddTerms(Term, Term),
+    Term(Term),
     Add(Box<RExpression>, Term),
+    Sub(Box<RExpression>, Term),
 }
 
 impl Display for RExpression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RExp::AddTerms(term1, term2) => {
-                write!(f, "{} + {}", term1, term2)
-            }
             RExp::Add(rexp, term) => {
                 write!(f, "{} + {}", *rexp, term)
             }
-            RExp::IntLiteral(intlit) => {
-                write!(f, "{}", intlit)
+            RExp::Sub(rexp, term) => {
+                write!(f, "{} - {}", *rexp, term)
             }
-            RExp::LExp(LExp::Ident(ident)) => {
-                write!(f, "{}", ident)
+            RExp::Term(term) => {
+                write!(f, "{}", term)
             }
         }
     }
@@ -158,8 +168,7 @@ impl TryInto<Term> for RExp {
     type Error = ();
     fn try_into(self) -> Result<Term, Self::Error> {
         match self {
-            Self::LExp(LExp::Ident(ident)) => Ok(Term::Ident(ident)),
-            Self::IntLiteral(intlit) => Ok(Term::IntLit(intlit)),
+            Self::Term(term) => Ok(term),
             _ => return Err(()),
         }
     }
@@ -167,16 +176,13 @@ impl TryInto<Term> for RExp {
 
 impl From<LExpression> for RExpression {
     fn from(value: LExp) -> Self {
-        return RExp::LExp(value);
+        return RExp::Term(Term::LExp(value));
     }
 }
 
 impl From<Term> for RExpression {
     fn from(value: Term) -> Self {
-        match value {
-            Term::Ident(ident) => RExp::LExp(LExp::Ident(ident)),
-            Term::IntLit(intlit) => RExp::IntLiteral(intlit),
-        }
+        return RExp::Term(value);
     }
 }
 
@@ -189,9 +195,17 @@ impl TryFrom<RExpression> for LExpression {
     type Error = ();
     fn try_from(value: RExpression) -> Result<Self, Self::Error> {
         return match value {
-            RExp::LExp(lexp) => Ok(lexp),
+            RExp::Term(Term::LExp(lexp)) => Ok(lexp),
             _ => Err(()),
         };
+    }
+}
+
+impl Display for LExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ident(ident) => write!(f, "{}", ident),
+        }
     }
 }
 
@@ -213,6 +227,14 @@ impl Parser {
     pub fn parse(&mut self) -> Result<(), ParsingError> {
         loop {
             let token = self.lexer.peek();
+            println!("[Parser] Parsing new statement.");
+            println!("[Parser] Peek token: {:?}", token);
+            if !self.program.statements.is_empty() {
+                println!(
+                    "[Parser] Statement: {}",
+                    self.program.statements.last().unwrap()
+                )
+            }
             match token.tokentype {
                 TT::StartOfFile | TT::NewLine => {
                     self.lexer.consume()?;
@@ -292,40 +314,43 @@ impl Parser {
         return Ok(());
     }
 
-    fn plus(&mut self, errmsg: impl Into<String>) -> Result<(), ParsingError> {
-        let token = self.lexer.peek();
-        if matches!(token.tokentype, TT::Plus) {
-            self.lexer.consume()?;
-            return Ok(());
-        }
-        return Err(PErr::unexpected(token, errmsg));
-    }
-
     fn rexp(&mut self, errmsg: impl Into<String>) -> Result<RExpression, ParsingError> {
         let term1 = self.term(errmsg)?;
-        if self.plus("").is_err() {
-            println!("Next token: {:?}", self.lexer.peek());
-            println!("[bin_exp] no plus.");
-
-            return Ok(term1.into());
+        println!("[Parser.rexp] term: {}", term1);
+        let mut rexp = RExp::Term(term1);
+        loop {
+            let token = self.lexer.peek();
+            match token.tokentype {
+                TT::Plus => {
+                    self.lexer.consume()?;
+                    println!("[Parser] consumed: {:?}", token);
+                    let term_next = self.term("Provide a second argument for the `+` operator.")?;
+                    rexp = RExp::Add(Box::new(rexp), term_next);
+                    println!("[Parser] new rexp: {}", rexp);
+                }
+                TT::Minus => {
+                    self.lexer.consume()?;
+                    println!("[Parser] consumed: {:?}", token);
+                    let term_next = self.term("Provide a second argument for the `-` operator.")?;
+                    rexp = RExp::Sub(Box::new(rexp), term_next);
+                    println!("[Parser] new rexp: {}", rexp);
+                }
+                _ => {
+                    return Ok(rexp);
+                }
+            }
         }
-        let term2 = self.term("Expected a term for binary expression.")?;
-        let mut add_rexp = RExp::AddTerms(term1, term2);
-        while self.plus("").is_ok() {
-            let term_next = self.term("Expected a term for binary expression.")?;
-            add_rexp = RExp::Add(Box::new(add_rexp), term_next);
-        }
-        return Ok(add_rexp);
     }
 
     fn term(&mut self, errmsg: impl Into<String>) -> Result<Term, ParsingError> {
         let token = self.lexer.peek();
         let term = match token.tokentype {
-            TT::Ident(_) => Term::Ident(token.into()),
+            TT::Ident(_) => Term::LExp(LExp::Ident(token.into())),
             TT::IntLiteral(_) => Term::IntLit(token.into()),
             _ => return Err(PErr::unexpected(token, errmsg)),
         };
         self.lexer.consume()?;
+        println!("[Parser] term: {}", term);
         return Ok(term);
     }
 
