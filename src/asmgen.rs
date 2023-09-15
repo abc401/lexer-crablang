@@ -115,133 +115,83 @@ impl AsmCode {
         self.stmt("push rax");
     }
 
+    fn binary_operator<F>(
+        &mut self,
+        bin_exp: &RExp,
+        lhs: &RExp,
+        rhs: &RExp,
+        symtable: &SymTable,
+        asm_gen: &mut F,
+    ) where
+        F: FnMut(&mut Self) -> (),
+    {
+        self.rexp(lhs, symtable);
+        self.rexp(rhs, symtable);
+
+        self.stmt("");
+        self.comment(&format!("{}", bin_exp));
+
+        self.stmt("pop rbx");
+        self.stmt("pop rax");
+
+        asm_gen(self);
+
+        self.stmt("push rax");
+    }
+
     fn rexp(&mut self, rexp: &RExp, symtable: &SymTable) {
         match rexp {
-            RExp::Add(lhs, rhs) => {
-                self.rexp(lhs, symtable);
-                self.rexp(rhs, symtable);
-
-                self.stmt("");
-                self.comment(&format!("{}", rexp));
-                self.stmt("pop rbx");
-                self.stmt("pop rax");
-                self.stmt("add rax, rbx");
-                self.stmt("push rax");
-            }
+            RExp::Add(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
+                asm.stmt("add rax, rbx");
+            }),
             RExp::Term(term) => {
                 self.term(term, symtable);
             }
-            RExp::Sub(lhs, rhs) => {
-                self.rexp(lhs, symtable);
-                self.rexp(rhs, symtable);
-
-                self.stmt("");
-                self.comment(&format!("{}", rexp));
-                self.stmt("pop rbx");
-                self.stmt("pop rax");
-                self.stmt("sub rax, rbx");
-                self.stmt("push rax");
-            }
-            RExp::Mul(lhs, rhs) => {
-                self.rexp(lhs, symtable);
-                self.rexp(rhs, symtable);
-
-                self.stmt("");
-                self.comment(&format!("{}", rexp));
-                self.stmt("pop rbx");
-                self.stmt("pop rax");
-                self.stmt("mul rbx");
-                self.stmt("push rax");
-            }
-            RExp::Div(lhs, rhs) => {
-                self.rexp(lhs, symtable);
-                self.rexp(rhs, symtable);
-
-                self.stmt("");
-                self.comment(&format!("{}", rexp));
-                self.stmt("pop rbx");
-                self.stmt("pop rax");
-                self.stmt("xor rdx, rdx");
-                self.stmt("div rbx");
-                self.stmt("push rax");
-            }
-            RExp::Equal(lhs, rhs) => {
-                self.rexp(lhs, symtable);
-                self.rexp(rhs, symtable);
-
-                self.stmt("");
-                self.comment(&format!("{}", rexp));
-                self.stmt("pop rbx");
-                self.stmt("pop rax");
-                self.stmt("cmp rax, rbx");
-                self.stmt("sete al");
-                self.stmt("and rax, 255");
-                self.stmt("push rax");
-            }
+            RExp::Sub(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
+                asm.stmt("sub rax, rbx");
+            }),
+            RExp::Mul(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
+                asm.stmt("mul rbx");
+            }),
+            RExp::Div(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
+                asm.stmt("xor rdx, rdx");
+                asm.stmt("div rbx");
+            }),
+            RExp::Equal(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
+                asm.stmt("cmp rax, rbx");
+                asm.stmt("sete al");
+                asm.stmt("and rax, 255");
+            }),
             RExp::NotEqual(lhs, rhs) => {
-                self.rexp(lhs, symtable);
-                self.rexp(rhs, symtable);
-
-                self.stmt("");
-                self.comment(&format!("{}", rexp));
-                self.stmt("pop rbx");
-                self.stmt("pop rax");
-                self.stmt("cmp rax, rbx");
-                self.stmt("setne al");
-                self.stmt("and rax, 255");
-                self.stmt("push rax");
+                self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
+                    asm.stmt("cmp rax, rbx");
+                    asm.stmt("setne al");
+                    asm.stmt("and rax, 255");
+                })
             }
-            RExp::Less(lhs, rhs) => {
-                self.rexp(lhs, symtable);
-                self.rexp(rhs, symtable);
-
-                self.stmt("");
-                self.comment(&format!("{}", rexp));
-                self.stmt("pop rbx");
-                self.stmt("pop rax");
-                self.stmt("cmp rax, rbx");
-                self.stmt("setl al");
-                self.stmt("and rax, 255");
-                self.stmt("push rax");
-            }
+            RExp::Less(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
+                asm.stmt("cmp rax, rbx");
+                asm.stmt("setl al");
+                asm.stmt("and rax, 255");
+            }),
             RExp::LessEqual(lhs, rhs) => {
-                self.rexp(lhs, symtable);
-                self.rexp(rhs, symtable);
-
-                self.stmt("");
-                self.comment(&format!("{}", rexp));
-                self.stmt("pop rbx");
-                self.stmt("pop rax");
-                self.stmt("cmp rax, rbx");
-                self.stmt("setle al");
-                self.stmt("and rax, 255");
-                self.stmt("push rax");
+                self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
+                    asm.stmt("cmp rax, rbx");
+                    asm.stmt("setle al");
+                    asm.stmt("and rax, 255");
+                })
             }
-            RExp::Greater(lhs, rhs) => {
-                self.rexp(lhs, symtable);
-                self.rexp(rhs, symtable);
-
-                self.stmt("");
-                self.comment(&format!("{}", rexp));
-                self.stmt("pop rbx");
-                self.stmt("pop rax");
-                self.stmt("cmp rax, rbx");
-                self.stmt("setg al");
-                self.stmt("and rax, 255");
-                self.stmt("push rax");
-            }
+            RExp::Greater(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
+                asm.stmt("cmp rax, rbx");
+                asm.stmt("setg al");
+                asm.stmt("and rax, 255");
+            }),
             RExp::GreaterEqual(lhs, rhs) => {
-                self.rexp(lhs, symtable);
-                self.rexp(rhs, symtable);
-
-                self.stmt("");
-                self.comment(&format!("{}", rexp));
-                self.stmt("pop rbx");
-                self.stmt("pop rax");
-                self.stmt("cmp rax, rbx");
-                self.stmt("setge al");
-                self.stmt("and rax, 255");
-                self.stmt("push rax");
+                self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
+                    asm.stmt("cmp rax, rbx");
+                    asm.stmt("setge al");
+                    asm.stmt("and rax, 255");
+                })
             }
             _ => panic!("[Assembly Generation] Not implemented: {}", rexp),
         }

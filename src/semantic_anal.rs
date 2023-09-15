@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::parser::{Identifier, LExp, Program, RExp, Statement as Stmt, Term};
+use crate::{
+    parser::{Identifier, LExp, Program, RExp, Statement as Stmt, Term},
+    CompileError,
+};
 
 #[derive(Debug)]
 pub struct Symbol {
@@ -10,17 +13,9 @@ pub struct Symbol {
     pub initialized: bool,
 }
 
-#[derive(Debug)]
-pub enum SematicError {
-    RedeclareIdent(Identifier),
-    UseOfUndeclaredIdent(Identifier),
-    UseOfUninitializedIdent(Identifier),
-}
-use SematicError as SErr;
-
 pub type SymTable = HashMap<String, Symbol>;
 
-pub fn analyze(program: &Program) -> Result<SymTable, SematicError> {
+pub fn analyze(program: &Program) -> Result<SymTable, CompileError> {
     let mut symtable: SymTable = HashMap::new();
     let mut current_rbp_offset = 0;
     for stmt in program.iter() {
@@ -28,7 +23,7 @@ pub fn analyze(program: &Program) -> Result<SymTable, SematicError> {
             Stmt::Declare(ident) => {
                 if symtable.contains_key(&ident.lexeme) {
                     let ident = &symtable.get(&ident.lexeme).unwrap().ident;
-                    return Err(SErr::RedeclareIdent(ident.clone()));
+                    return Err(CompileError::RedeclareIdent(ident.clone()));
                 }
                 current_rbp_offset += 8;
                 symtable.insert(
@@ -44,7 +39,7 @@ pub fn analyze(program: &Program) -> Result<SymTable, SematicError> {
             Stmt::Initialize(l_ident, rexp) => {
                 if symtable.contains_key(&l_ident.lexeme) {
                     let ident = &symtable.get(&l_ident.lexeme).unwrap().ident;
-                    return Err(SErr::RedeclareIdent(ident.clone()));
+                    return Err(CompileError::RedeclareIdent(ident.clone()));
                 }
                 analyze_rexp(rexp, &mut symtable)?;
                 current_rbp_offset += 8;
@@ -63,36 +58,36 @@ pub fn analyze(program: &Program) -> Result<SymTable, SematicError> {
                 let LExp::Ident(l_ident) = lexp;
                 let l_sym = symtable.get_mut(&l_ident.lexeme);
                 if l_sym.is_none() {
-                    return Err(SErr::UseOfUndeclaredIdent(l_ident.clone()));
+                    return Err(CompileError::UseOfUndeclaredIdent(l_ident.clone()));
                 }
                 l_sym.unwrap().initialized = true;
             }
             Stmt::RExp(rexp) => analyze_rexp(rexp, &mut symtable)?,
-            _ => panic!("[Symantic Analysis] Not implemented: {}", stmt),
+            _ => panic!("[Semantic Analysis] Not implemented: {}", stmt),
         }
     }
 
     return Ok(symtable);
 }
 
-fn analyze_term(term: &Term, symtable: &SymTable) -> Result<(), SematicError> {
+fn analyze_term(term: &Term, symtable: &SymTable) -> Result<(), CompileError> {
     match term {
         Term::IntLit(_) => Ok(()),
         Term::LExp(LExp::Ident(ident)) => {
             let sym = symtable.get(&ident.lexeme);
             if sym.is_none() {
-                return Err(SErr::UseOfUndeclaredIdent(ident.clone()));
+                return Err(CompileError::UseOfUndeclaredIdent(ident.clone()));
             }
             if !sym.unwrap().initialized {
-                return Err(SErr::UseOfUninitializedIdent(ident.clone()));
+                return Err(CompileError::UseOfUninitializedIdent(ident.clone()));
             }
             return Ok(());
         }
-        _ => panic!("[Symantic Analysis] Not implemented: {}", term),
+        _ => panic!("[Semantic Analysis] Not implemented: {}", term),
     }
 }
 
-fn analyze_rexp(rexp: &RExp, symtable: &SymTable) -> Result<(), SematicError> {
+fn analyze_rexp(rexp: &RExp, symtable: &SymTable) -> Result<(), CompileError> {
     match rexp {
         RExp::Term(term) => analyze_term(term, symtable)?,
         RExp::Add(lhs, rhs)
@@ -109,7 +104,7 @@ fn analyze_rexp(rexp: &RExp, symtable: &SymTable) -> Result<(), SematicError> {
             analyze_rexp(rhs, symtable)?;
         }
 
-        _ => panic!("[Symantic Analysis] Not implemented: {}", rexp),
+        _ => panic!("[Semantic Analysis] Not implemented: {}", rexp),
     }
     return Ok(());
 }

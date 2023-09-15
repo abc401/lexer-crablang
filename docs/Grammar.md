@@ -10,10 +10,14 @@ $$
 
     RExp &\to \begin{cases}
         [Term] \\
-        [RExp] + [RExp] \\
-        [RExp] - [RExp] \\
-        [RExp] * [RExp] \\
-        [RExp] / [RExp] \\
+        [RExp] \text{ + }  [RExp] \\
+        [RExp] \text{ - }  [RExp] \\
+        [RExp] \text{ == } [RExp] \\
+        [RExp] \text{ != } [RExp] \\
+        [RExp] \text{ < }  [RExp] \\
+        [RExp] \text{ <= } [RExp] \\
+        [RExp] \text{ > }  [RExp] \\
+        [RExp] \text{ >= } [RExp] \\
     \end{cases} \\
 
     Term &\to \begin{cases}
