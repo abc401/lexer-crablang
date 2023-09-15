@@ -42,6 +42,8 @@ pub enum TokenType {
     Assign,
     Plus,
     Minus,
+    Asterisk,
+    ForwardSlash,
 }
 use TokenType as TT;
 impl Default for TokenType {
@@ -115,7 +117,7 @@ impl Lexer {
         self.token_cursor += 1;
     }
 
-    fn rewind(&mut self) {
+    pub fn rewind(&mut self) {
         if self.token_cursor <= 0 {
             return;
         }
@@ -146,6 +148,14 @@ impl Lexer {
             '-' => {
                 self.consume_ch();
                 self.set_next_token(TT::Minus);
+            }
+            '*' => {
+                self.consume_ch();
+                self.set_next_token(TT::Asterisk);
+            }
+            '/' => {
+                self.consume_ch();
+                self.set_next_token(TT::ForwardSlash);
             }
             '=' => {
                 self.consume_ch();

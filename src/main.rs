@@ -1,7 +1,7 @@
-mod asmgen;
 mod lexer;
 mod parser;
 mod semantic_anal;
+mod asmgen;
 
 use std::process::exit;
 

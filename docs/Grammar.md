@@ -10,13 +10,15 @@ $$
 
     RExp &\to \begin{cases}
         [Term] \\
-        [RExp] + [Term] \\
-        [RExp] - [Term] \\
+        [RExp] + [RExp] \\
+        [RExp] - [RExp] \\
+        [RExp] * [RExp] \\
+        [RExp] / [RExp] \\
     \end{cases} \\
 
     Term &\to \begin{cases}
         [IntLit] \\
-        [LExp]
+        [LExp] \\
     \end{cases} \\
 
     LExp &\to \begin{cases}

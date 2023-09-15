@@ -1,14 +1,12 @@
 use std::collections::HashMap;
 
-use crate::parser::{
-    Identifier, LExpression as LExp, Program, RExpression as RExp, RExpression, Statement as Stmt,
-    Term,
-};
+use crate::parser::{Identifier, LExp, Program, RExp, Statement as Stmt, Term};
 
 #[derive(Debug)]
 pub struct Symbol {
     pub ident: Identifier,
     pub rbp_offset: usize,
+    pub size_bytes: usize,
     pub initialized: bool,
 }
 
@@ -37,6 +35,7 @@ pub fn analyze(program: &Program) -> Result<SymTable, SematicError> {
                     ident.lexeme.clone(),
                     Symbol {
                         ident: ident.clone(),
+                        size_bytes: 8,
                         rbp_offset: current_rbp_offset,
                         initialized: false,
                     },
@@ -53,6 +52,7 @@ pub fn analyze(program: &Program) -> Result<SymTable, SematicError> {
                     l_ident.lexeme.clone(),
                     Symbol {
                         ident: l_ident.clone(),
+                        size_bytes: 8,
                         rbp_offset: current_rbp_offset,
                         initialized: true,
                     },
@@ -90,16 +90,12 @@ fn analyze_term(term: &Term, symtable: &SymTable) -> Result<(), SematicError> {
     }
 }
 
-fn analyze_rexp(rexp: &RExpression, symtable: &SymTable) -> Result<(), SematicError> {
+fn analyze_rexp(rexp: &RExp, symtable: &SymTable) -> Result<(), SematicError> {
     match rexp {
         RExp::Term(term) => analyze_term(term, symtable)?,
-        RExp::Add(rexp, term) => {
-            analyze_rexp(rexp, symtable)?;
-            analyze_term(term, symtable)?;
-        }
-        RExp::Sub(rexp, term) => {
-            analyze_rexp(rexp, symtable)?;
-            analyze_term(term, symtable)?;
+        RExp::Add(lhs, rhs) | RExp::Sub(lhs, rhs) | RExp::Mul(lhs, rhs) | RExp::Div(lhs, rhs) => {
+            analyze_rexp(lhs, symtable)?;
+            analyze_rexp(rhs, symtable)?;
         }
     }
     return Ok(());

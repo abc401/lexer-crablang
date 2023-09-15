@@ -1,10 +1,7 @@
 use std::{collections::HashSet, fs::File, io::Write, process::Command};
 
 use crate::{
-    parser::{
-        Identifier, IntLiteral, LExpression as LExp, Program, RExpression as RExp,
-        Statement as Stmt, Term,
-    },
+    parser::{Identifier, IntLiteral, LExp, Program, RExp, Statement as Stmt, Term},
     semantic_anal::SymTable,
 };
 
@@ -40,6 +37,12 @@ impl AsmCode {
     fn comment(&mut self, comment: &str) {
         self.text.push_str("    ; ");
         self.text.push_str(comment);
+        self.text.push('\n');
+    }
+    fn comment_emp(&mut self, comment: &str) {
+        self.text.push_str("    ; ################# ");
+        self.text.push_str(comment);
+        self.text.push_str(" #################");
         self.text.push('\n');
     }
 
@@ -98,28 +101,67 @@ impl AsmCode {
             ident.lexeme
         ));
 
-        self.stmt(&format!("mov ebx, dword [rbp-{}]", sym.rbp_offset));
+        self.stmt("");
+        self.comment(&ident.lexeme);
+        self.stmt(&format!("push qword [rbp-{}]", sym.rbp_offset));
     }
 
     fn intlit(&mut self, intlit: &IntLiteral) {
-        self.stmt(&format!("mov ebx, {}", intlit.lexeme));
+        self.stmt("");
+        self.comment(&intlit.lexeme);
+        self.stmt(&format!("mov rax, {}", intlit.lexeme));
+        self.stmt("push rax");
     }
 
     fn rexp(&mut self, rexp: &RExp, symtable: &SymTable) {
         match rexp {
-            RExp::Add(rexp, term) => {
-                self.rexp(rexp, symtable);
-                self.term(term, symtable);
-                self.stmt("add eax, ebx");
+            RExp::Add(lhs, rhs) => {
+                self.rexp(lhs, symtable);
+                self.rexp(rhs, symtable);
+
+                self.stmt("");
+                self.comment(&format!("{}", rexp));
+                self.stmt("pop rbx");
+                self.stmt("pop rax");
+                self.stmt("add rax, rbx");
+                self.stmt("push rax");
             }
             RExp::Term(term) => {
                 self.term(term, symtable);
-                self.stmt("mov eax, ebx");
             }
-            RExp::Sub(rexp, term) => {
-                self.rexp(rexp, symtable);
-                self.term(term, symtable);
-                self.stmt("sub eax, ebx");
+            RExp::Sub(lhs, rhs) => {
+                self.rexp(lhs, symtable);
+                self.rexp(rhs, symtable);
+
+                self.stmt("");
+                self.comment(&format!("{}", rexp));
+                self.stmt("pop rbx");
+                self.stmt("pop rax");
+                self.stmt("sub rax, rbx");
+                self.stmt("push rax");
+            }
+            RExp::Mul(lhs, rhs) => {
+                self.rexp(lhs, symtable);
+                self.rexp(rhs, symtable);
+
+                self.stmt("");
+                self.comment(&format!("{}", rexp));
+                self.stmt("pop rbx");
+                self.stmt("pop rax");
+                self.stmt("mul rbx");
+                self.stmt("push rax");
+            }
+            RExp::Div(lhs, rhs) => {
+                self.rexp(lhs, symtable);
+                self.rexp(rhs, symtable);
+
+                self.stmt("");
+                self.comment(&format!("{}", rexp));
+                self.stmt("pop rbx");
+                self.stmt("pop rax");
+                self.stmt("xor rdx, rdx");
+                self.stmt("div rbx");
+                self.stmt("push rax");
             }
         }
     }
@@ -131,9 +173,14 @@ impl AsmCode {
         for stmt in program.iter() {
             match stmt {
                 Stmt::Declare(ident) => {
+                    let sym = symtable.get(&ident.lexeme).expect(&format!(
+                        "[AsmGen] Identifier `{}` in program is not present in symtable",
+                        ident.lexeme
+                    ));
+
                     self.stmt("");
-                    self.comment(&format!("let {}", ident.lexeme));
-                    self.stmt("sub rsp, 4");
+                    self.comment_emp(&format!("let {}", ident.lexeme));
+                    self.stmt(&format!("sub rsp, {}", sym.size_bytes));
                 }
                 Stmt::Initialize(l_ident, rexp) => {
                     let l_sym = symtable.get(&l_ident.lexeme).expect(&format!(
@@ -141,11 +188,15 @@ impl AsmCode {
                         l_ident.lexeme
                     ));
                     self.stmt("");
-                    self.comment(&format!("let {} = {}", l_ident.lexeme, rexp));
-                    self.stmt("sub rsp, 4");
-                    self.stmt("xor eax, eax");
+                    self.comment_emp(&format!("let {} = {}", l_ident.lexeme, rexp));
+
+                    self.stmt("");
+                    self.comment(&format!("let {}", l_ident.lexeme));
+                    self.stmt(&format!("sub rsp, {}", l_sym.size_bytes));
+
                     self.rexp(rexp, &symtable);
-                    self.stmt(&format!("mov dword [rbp-{}], eax", l_sym.rbp_offset));
+
+                    self.stmt(&format!("mov qword [rbp-{}], rax", l_sym.rbp_offset));
                 }
                 Stmt::Assign(lexp, rexp) => {
                     let LExp::Ident(l_ident) = lexp;
@@ -154,16 +205,16 @@ impl AsmCode {
                         l_ident.lexeme
                     ));
                     self.stmt("");
-                    self.comment(&format!("{} = {}", l_ident.lexeme, rexp));
+                    self.comment_emp(&format!("{} = {}", l_ident.lexeme, rexp));
                     self.rexp(rexp, &symtable);
-                    self.stmt(&format!("mov dword [rbp-{}], eax", l_sym.rbp_offset));
+                    self.stmt(&format!("mov qword [rbp-{}], rax", l_sym.rbp_offset));
                 }
                 _ => {}
             }
         }
 
         self.stmt("");
-        self.comment("Exit with exit code 0");
+        self.comment_emp("Exit with exit code 0");
         self.stmt("xor rcx, rcx");
         self.stmt("call ExitProcess");
     }

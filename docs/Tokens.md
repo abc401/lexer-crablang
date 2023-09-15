@@ -2,9 +2,9 @@
 
 Following are the different tokens supported by the language as of yet:
 
-## Integer Literals
+## Literals
 
-Toylang only supports positive, decimal, int literals currently. Following are all examples of correct int literals:
+Toylang, currently, only supports positive, decimal, int literals. Following are all examples of correct int literals:
 
 - `123`
 - `0000132`
@@ -29,7 +29,8 @@ Identifiers in Toylang can consist of all alphanumeric characters along with `_`
 Following are examples of invalid identifiers:
 
 - `abc def`
-- `1nvalid_identifier` <- has a one at the start
+- `123abc`
+- `1nvalid_identifier` <- has a `1` at the start
 
 ## Keywords
 
@@ -37,4 +38,12 @@ The only keyword that Toylang supports as of yet is `let`. It is used to initial
 
 ## Operators
 
-Toylang supports a single operator which is `=`. It can be used to assign a value to a variable.
+Following is a brief description of the different operator tokens that toylang currently supports and what those tokens are meant to do:
+
+### Assignment: `=`
+
+This is the assignment operator and it can be used to assign values to identifiers.
+
+### Arithmatic Operators
+
+Toylang now supports arithmatic operations such as addition, subtraction, multiplication, division. As you would expect, these operations are accomplished by using the `+`, `-`, `*` and the `/` characters respectively.
