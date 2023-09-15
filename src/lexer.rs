@@ -44,18 +44,22 @@ pub enum TokenType {
     Minus,
     Asterisk,
     ForwardSlash,
+    Equal,
+    NotEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
 }
 use TokenType as TT;
+
+use crate::CompileError;
+
 impl Default for TokenType {
     fn default() -> Self {
         return TT::StartOfFile;
     }
 }
-
-pub enum LexingError {
-    IllegalToken(Token),
-}
-use LexingError as LErr;
 
 #[derive(Debug)]
 pub struct Lexer {
@@ -105,12 +109,10 @@ impl Lexer {
     }
 
     fn make_next_token(&mut self) {
-        // print!("[Lexer] start: {} ", self.loc);
         self.next_token.start = self.loc;
     }
 
     fn set_next_token(&mut self, tokentype: TokenType) {
-        // println!("end: {} type: {:?}", self.loc, tokentype);
         self.next_token.tokentype = tokentype;
         self.next_token.end = self.loc;
         self.tokens.push(self.next_token.clone());
@@ -124,7 +126,13 @@ impl Lexer {
         self.token_cursor -= 1;
     }
 
-    pub fn consume(&mut self) -> Result<(), LexingError> {
+    fn single_char_token(&mut self, tokentype: TokenType) {
+        self.consume_ch();
+        self.set_next_token(tokentype);
+    }
+
+    pub fn consume(&mut self) -> Result<(), CompileError> {
+        // println!("[Lexer] peek: {:?}", self.peek().tokentype);
         if self.token_cursor < self.tokens.len() - 1 {
             self.token_cursor += 1;
             return Ok(());
@@ -136,36 +144,60 @@ impl Lexer {
             return Ok(());
         };
         match ch {
-            '\n' => {
+            '\n' => self.single_char_token(TT::NewLine),
+            '+' => self.single_char_token(TT::Plus),
+            '-' => self.single_char_token(TT::Minus),
+            '*' => self.single_char_token(TT::Asterisk),
+            '/' => self.single_char_token(TT::ForwardSlash),
+            '!' => {
                 self.consume_ch();
-                self.set_next_token(TT::NewLine);
-                // println!("[Lexer] {:?}", self.peek());
+                let Some(ch) = self.peek_ch else {
+                    self.set_next_token(TT::Illegal('!'.into()));
+                    return Ok(());
+                };
+                match ch {
+                    '=' => self.single_char_token(TT::NotEqual),
+                    _ => self.set_next_token(TT::Illegal('!'.into())),
+                }
             }
-            '+' => {
+            '>' => {
                 self.consume_ch();
-                self.set_next_token(TT::Plus);
+                let Some(ch) = self.peek_ch else {
+                    self.set_next_token(TT::Greater);
+                    return Ok(());
+                };
+                match ch {
+                    '=' => self.single_char_token(TT::GreaterEqual),
+                    _ => self.set_next_token(TT::Greater),
+                }
             }
-            '-' => {
+            '<' => {
                 self.consume_ch();
-                self.set_next_token(TT::Minus);
-            }
-            '*' => {
-                self.consume_ch();
-                self.set_next_token(TT::Asterisk);
-            }
-            '/' => {
-                self.consume_ch();
-                self.set_next_token(TT::ForwardSlash);
+                let Some(ch) = self.peek_ch else {
+                    self.set_next_token(TT::Less);
+                    return Ok(());
+                };
+                match ch {
+                    '=' => self.single_char_token(TT::LessEqual),
+                    _ => self.set_next_token(TT::Less),
+                }
             }
             '=' => {
                 self.consume_ch();
-                self.set_next_token(TT::Assign);
+                let Some(ch) = self.peek_ch else {
+                    self.set_next_token(TT::Assign);
+                    return Ok(());
+                };
+                match ch {
+                    '=' => self.single_char_token(TT::Equal),
+                    _ => self.set_next_token(TT::Assign),
+                }
             }
             ch if ch.is_ascii_alphabetic() || ch == '_' => self.ident_or_keyword(),
             ch if ch.is_ascii_digit() => self.int_literal()?,
             ch => {
                 self.set_next_token(TT::Illegal(String::from(ch)));
-                return Err(LErr::IllegalToken(self.peek()));
+                return Err(CompileError::IllegalToken(self.peek()));
             }
         };
         return Ok(());
@@ -201,7 +233,7 @@ impl Lexer {
         }
     }
 
-    fn int_literal(&mut self) -> Result<(), LexingError> {
+    fn int_literal(&mut self) -> Result<(), CompileError> {
         // TODO: Handle 64 bit int literals
         let Some(ch) = self.peek_ch else {
             panic!("[Lexer.int_literal] Called eventhough no characters are left!");
@@ -225,7 +257,7 @@ impl Lexer {
         if illegal_lexeme.len() > 0 {
             lexeme.extend(illegal_lexeme.chars());
             self.set_next_token(TT::Illegal(lexeme));
-            return Err(LErr::IllegalToken(self.peek()));
+            return Err(CompileError::IllegalToken(self.peek()));
         }
 
         self.set_next_token(TT::IntLiteral(lexeme));
@@ -259,6 +291,5 @@ impl Lexer {
                 self.set_next_token(TT::Ident(lexeme));
             }
         };
-        // println!("{:?}", self.peek_token);
     }
 }

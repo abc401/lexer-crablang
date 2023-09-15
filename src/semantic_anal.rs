@@ -30,7 +30,7 @@ pub fn analyze(program: &Program) -> Result<SymTable, SematicError> {
                     let ident = &symtable.get(&ident.lexeme).unwrap().ident;
                     return Err(SErr::RedeclareIdent(ident.clone()));
                 }
-                current_rbp_offset += 4;
+                current_rbp_offset += 8;
                 symtable.insert(
                     ident.lexeme.clone(),
                     Symbol {
@@ -47,7 +47,7 @@ pub fn analyze(program: &Program) -> Result<SymTable, SematicError> {
                     return Err(SErr::RedeclareIdent(ident.clone()));
                 }
                 analyze_rexp(rexp, &mut symtable)?;
-                current_rbp_offset += 4;
+                current_rbp_offset += 8;
                 symtable.insert(
                     l_ident.lexeme.clone(),
                     Symbol {
@@ -68,6 +68,7 @@ pub fn analyze(program: &Program) -> Result<SymTable, SematicError> {
                 l_sym.unwrap().initialized = true;
             }
             Stmt::RExp(rexp) => analyze_rexp(rexp, &mut symtable)?,
+            _ => panic!("[Symantic Analysis] Not implemented: {}", stmt),
         }
     }
 
@@ -87,16 +88,28 @@ fn analyze_term(term: &Term, symtable: &SymTable) -> Result<(), SematicError> {
             }
             return Ok(());
         }
+        _ => panic!("[Symantic Analysis] Not implemented: {}", term),
     }
 }
 
 fn analyze_rexp(rexp: &RExp, symtable: &SymTable) -> Result<(), SematicError> {
     match rexp {
         RExp::Term(term) => analyze_term(term, symtable)?,
-        RExp::Add(lhs, rhs) | RExp::Sub(lhs, rhs) | RExp::Mul(lhs, rhs) | RExp::Div(lhs, rhs) => {
+        RExp::Add(lhs, rhs)
+        | RExp::Sub(lhs, rhs)
+        | RExp::Mul(lhs, rhs)
+        | RExp::Div(lhs, rhs)
+        | RExp::Equal(lhs, rhs)
+        | RExp::NotEqual(lhs, rhs)
+        | RExp::Less(lhs, rhs)
+        | RExp::LessEqual(lhs, rhs)
+        | RExp::Greater(lhs, rhs)
+        | RExp::GreaterEqual(lhs, rhs) => {
             analyze_rexp(lhs, symtable)?;
             analyze_rexp(rhs, symtable)?;
         }
+
+        _ => panic!("[Symantic Analysis] Not implemented: {}", rexp),
     }
     return Ok(());
 }

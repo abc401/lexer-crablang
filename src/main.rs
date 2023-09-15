@@ -1,15 +1,34 @@
+mod asmgen;
 mod lexer;
 mod parser;
 mod semantic_anal;
-mod asmgen;
 
 use std::process::exit;
 
-use parser::Parser;
+use lexer::Token;
+use parser::{Identifier, Parser};
 
 use semantic_anal::analyze;
 
 use crate::asmgen::AsmCode;
+
+#[derive(Debug)]
+pub enum CompileError {
+    IllegalToken(Token),
+    UnexpectedToken { unexpected: Token, msg: String },
+    RedeclareIdent(Identifier),
+    UseOfUndeclaredIdent(Identifier),
+    UseOfUninitializedIdent(Identifier),
+}
+
+impl CompileError {
+    fn unexpected(unexpected: Token, msg: impl Into<String>) -> Self {
+        return Self::UnexpectedToken {
+            unexpected,
+            msg: msg.into(),
+        };
+    }
+}
 
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = std::env::args().collect();

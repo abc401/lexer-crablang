@@ -92,6 +92,8 @@ impl AsmCode {
         match term {
             Term::LExp(LExp::Ident(ident)) => self.ident(ident, symtable),
             Term::IntLit(intlit) => self.intlit(intlit),
+
+            _ => panic!("[Assembly Generation] Not implemented: {}", term),
         }
     }
 
@@ -163,6 +165,85 @@ impl AsmCode {
                 self.stmt("div rbx");
                 self.stmt("push rax");
             }
+            RExp::Equal(lhs, rhs) => {
+                self.rexp(lhs, symtable);
+                self.rexp(rhs, symtable);
+
+                self.stmt("");
+                self.comment(&format!("{}", rexp));
+                self.stmt("pop rbx");
+                self.stmt("pop rax");
+                self.stmt("cmp rax, rbx");
+                self.stmt("sete al");
+                self.stmt("and rax, 255");
+                self.stmt("push rax");
+            }
+            RExp::NotEqual(lhs, rhs) => {
+                self.rexp(lhs, symtable);
+                self.rexp(rhs, symtable);
+
+                self.stmt("");
+                self.comment(&format!("{}", rexp));
+                self.stmt("pop rbx");
+                self.stmt("pop rax");
+                self.stmt("cmp rax, rbx");
+                self.stmt("setne al");
+                self.stmt("and rax, 255");
+                self.stmt("push rax");
+            }
+            RExp::Less(lhs, rhs) => {
+                self.rexp(lhs, symtable);
+                self.rexp(rhs, symtable);
+
+                self.stmt("");
+                self.comment(&format!("{}", rexp));
+                self.stmt("pop rbx");
+                self.stmt("pop rax");
+                self.stmt("cmp rax, rbx");
+                self.stmt("setl al");
+                self.stmt("and rax, 255");
+                self.stmt("push rax");
+            }
+            RExp::LessEqual(lhs, rhs) => {
+                self.rexp(lhs, symtable);
+                self.rexp(rhs, symtable);
+
+                self.stmt("");
+                self.comment(&format!("{}", rexp));
+                self.stmt("pop rbx");
+                self.stmt("pop rax");
+                self.stmt("cmp rax, rbx");
+                self.stmt("setle al");
+                self.stmt("and rax, 255");
+                self.stmt("push rax");
+            }
+            RExp::Greater(lhs, rhs) => {
+                self.rexp(lhs, symtable);
+                self.rexp(rhs, symtable);
+
+                self.stmt("");
+                self.comment(&format!("{}", rexp));
+                self.stmt("pop rbx");
+                self.stmt("pop rax");
+                self.stmt("cmp rax, rbx");
+                self.stmt("setg al");
+                self.stmt("and rax, 255");
+                self.stmt("push rax");
+            }
+            RExp::GreaterEqual(lhs, rhs) => {
+                self.rexp(lhs, symtable);
+                self.rexp(rhs, symtable);
+
+                self.stmt("");
+                self.comment(&format!("{}", rexp));
+                self.stmt("pop rbx");
+                self.stmt("pop rax");
+                self.stmt("cmp rax, rbx");
+                self.stmt("setge al");
+                self.stmt("and rax, 255");
+                self.stmt("push rax");
+            }
+            _ => panic!("[Assembly Generation] Not implemented: {}", rexp),
         }
     }
 
@@ -195,6 +276,7 @@ impl AsmCode {
                     self.stmt(&format!("sub rsp, {}", l_sym.size_bytes));
 
                     self.rexp(rexp, &symtable);
+                    self.stmt("pop rax");
 
                     self.stmt(&format!("mov qword [rbp-{}], rax", l_sym.rbp_offset));
                 }
@@ -207,9 +289,12 @@ impl AsmCode {
                     self.stmt("");
                     self.comment_emp(&format!("{} = {}", l_ident.lexeme, rexp));
                     self.rexp(rexp, &symtable);
+                    self.stmt("pop rax");
                     self.stmt(&format!("mov qword [rbp-{}], rax", l_sym.rbp_offset));
                 }
-                _ => {}
+                Stmt::RExp(_) => {}
+
+                _ => panic!("[Assembly Generation] Not implemented: {}", stmt),
             }
         }
 

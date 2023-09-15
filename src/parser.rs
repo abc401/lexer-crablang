@@ -1,29 +1,10 @@
-use crate::lexer::{LexingError as LErr, Location, Token, TokenType as TT};
+use crate::{
+    lexer::{Location, Token, TokenType as TT},
+    CompileError,
+};
 
 use super::lexer::Lexer;
 use std::{fmt::Display, slice::Iter};
-
-#[derive(Debug)]
-pub enum ParsingError {
-    UnexpectedToken { unexpected: Token, msg: String },
-    IllegalToken(Token),
-}
-impl ParsingError {
-    fn unexpected(unexpected: Token, msg: impl Into<String>) -> Self {
-        return Self::UnexpectedToken {
-            unexpected,
-            msg: msg.into(),
-        };
-    }
-}
-use ParsingError as PErr;
-
-impl From<LErr> for PErr {
-    fn from(value: LErr) -> Self {
-        let LErr::IllegalToken(token) = value;
-        return PErr::IllegalToken(token);
-    }
-}
 
 #[derive(Debug)]
 pub struct Program {
@@ -37,7 +18,7 @@ impl Display for Program {
             write!(f, "\t{}\n", stmt)?;
             write!(f, "---------------------------------------------------\n")?;
         }
-        write!(f, "}}");
+        write!(f, "}}")?;
         return Ok(());
     }
 }
@@ -145,6 +126,12 @@ pub enum RExp {
     Sub(Box<RExp>, Box<RExp>),
     Mul(Box<RExp>, Box<RExp>),
     Div(Box<RExp>, Box<RExp>),
+    Equal(Box<RExp>, Box<RExp>),
+    NotEqual(Box<RExp>, Box<RExp>),
+    Less(Box<RExp>, Box<RExp>),
+    LessEqual(Box<RExp>, Box<RExp>),
+    Greater(Box<RExp>, Box<RExp>),
+    GreaterEqual(Box<RExp>, Box<RExp>),
 }
 
 impl RExp {
@@ -156,6 +143,12 @@ impl RExp {
             TT::Minus => RExp::Sub(lhs, rhs),
             TT::Asterisk => RExp::Mul(lhs, rhs),
             TT::ForwardSlash => RExp::Div(lhs, rhs),
+            TT::Equal => RExp::Equal(lhs, rhs),
+            TT::NotEqual => RExp::NotEqual(lhs, rhs),
+            TT::Less => RExp::Less(lhs, rhs),
+            TT::LessEqual => RExp::LessEqual(lhs, rhs),
+            TT::Greater => RExp::Greater(lhs, rhs),
+            TT::GreaterEqual => RExp::GreaterEqual(lhs, rhs),
             _ => panic!(
                 "[Parser] [RExp.from_bin_exp] Invalid operator: {:?}",
                 operator
@@ -171,7 +164,14 @@ impl Display for RExp {
             RExp::Mul(lhs, rhs) => write!(f, "({} * {})", lhs, rhs),
             RExp::Sub(lhs, rhs) => write!(f, "({} - {})", lhs, rhs),
             RExp::Div(lhs, rhs) => write!(f, "({} / {})", lhs, rhs),
+            RExp::Equal(lhs, rhs) => write!(f, "({} == {})", lhs, rhs),
+            RExp::NotEqual(lhs, rhs) => write!(f, "({} != {})", lhs, rhs),
+            RExp::Less(lhs, rhs) => write!(f, "({} < {})", lhs, rhs),
+            RExp::LessEqual(lhs, rhs) => write!(f, "({} <= {})", lhs, rhs),
+            RExp::Greater(lhs, rhs) => write!(f, "({} > {})", lhs, rhs),
+            RExp::GreaterEqual(lhs, rhs) => write!(f, "({} >= {})", lhs, rhs),
             RExp::Term(term) => write!(f, "{}", term),
+            _ => panic!("[RExp.Display] not impleted for: {:?}", self),
         }
     }
 }
@@ -222,7 +222,16 @@ impl Display for LExp {
 
 fn is_op(tokentype: &TT) -> bool {
     match tokentype {
-        TT::Minus | TT::Plus | TT::Asterisk | TT::ForwardSlash => true,
+        TT::Minus
+        | TT::Plus
+        | TT::Asterisk
+        | TT::ForwardSlash
+        | TT::Equal
+        | TT::NotEqual
+        | TT::Less
+        | TT::LessEqual
+        | TT::Greater
+        | TT::GreaterEqual => true,
         _ => false,
     }
 }
@@ -234,8 +243,11 @@ enum OpAssoc {
 
 fn op_prec_and_assoc(tokentype: &TT) -> (usize, OpAssoc) {
     match tokentype {
-        TT::Minus | TT::Plus => (1, OpAssoc::Left),
-        TT::Asterisk | TT::ForwardSlash => (2, OpAssoc::Left),
+        TT::Equal | TT::NotEqual | TT::Less | TT::LessEqual | TT::Greater | TT::GreaterEqual => {
+            (1, OpAssoc::Right)
+        }
+        TT::Minus | TT::Plus => (2, OpAssoc::Left),
+        TT::Asterisk | TT::ForwardSlash => (3, OpAssoc::Left),
         _ => panic!("{:?} is not an operator.", tokentype),
     }
 }
@@ -255,7 +267,7 @@ impl Parser {
         };
     }
 
-    pub fn parse(&mut self) -> Result<(), ParsingError> {
+    pub fn parse(&mut self) -> Result<(), CompileError> {
         loop {
             let token = self.lexer.peek();
             println!("[Parser] Parsing new statement.");
@@ -283,7 +295,7 @@ impl Parser {
                     self.assign_stmt_or_rexp()?;
                 }
                 _ => {
-                    return Err(PErr::unexpected(
+                    return Err(CompileError::unexpected(
                         token,
                         "Invalid token for starting a statement",
                     ));
@@ -293,27 +305,27 @@ impl Parser {
         return Ok(());
     }
 
-    fn assign(&mut self, errmsg: impl Into<String>) -> Result<(), ParsingError> {
+    fn assign(&mut self, errmsg: impl Into<String>) -> Result<(), CompileError> {
         let token = self.lexer.peek();
         if !matches!(token.tokentype, TT::Assign) {
-            return Err(PErr::unexpected(token, errmsg));
+            return Err(CompileError::unexpected(token, errmsg));
         }
         self.lexer.consume()?;
         return Ok(());
     }
 
-    fn newline(&mut self, errmsg: impl Into<String>) -> Result<(), ParsingError> {
+    fn newline_or_eof(&mut self, errmsg: impl Into<String>) -> Result<(), CompileError> {
         let token = self.lexer.peek();
-        if !matches!(token.tokentype, TT::NewLine) {
-            return Err(PErr::unexpected(token, errmsg));
+        if !matches!(token.tokentype, TT::NewLine | TT::EndOfFile) {
+            return Err(CompileError::unexpected(token, errmsg));
         }
         self.lexer.consume()?;
         return Ok(());
     }
 
-    fn assign_stmt_or_rexp(&mut self) -> Result<(), ParsingError> {
+    fn assign_stmt_or_rexp(&mut self) -> Result<(), CompileError> {
         let exp = self.rexp("");
-        if exp.is_ok() && self.newline("").is_ok() {
+        if exp.is_ok() && self.newline_or_eof("").is_ok() {
             let stmt = Stmt::RExp(exp.unwrap());
             self.program.statements.push(stmt);
             return Ok(());
@@ -321,7 +333,7 @@ impl Parser {
 
         let lexp = LExp::try_from(exp.unwrap());
         if lexp.is_err() {
-            return Err(PErr::unexpected(
+            return Err(CompileError::unexpected(
                 self.lexer.peek(),
                 "Expected an lexpression.",
             ));
@@ -332,7 +344,7 @@ impl Parser {
         match res {
             Ok(_) => {}
             Err(_) => {
-                self.newline("[assign_stmt_or_rexp] Expected a newline.")?;
+                self.newline_or_eof("[assign_stmt_or_rexp] Expected a newline.")?;
                 let stmt = Stmt::RExp(lexp.into());
                 self.program.statements.push(stmt);
                 return Ok(());
@@ -349,7 +361,7 @@ impl Parser {
         &mut self,
         min_prec: usize,
         errmsg: impl Into<String>,
-    ) -> Result<RExp, ParsingError> {
+    ) -> Result<RExp, CompileError> {
         let mut rexp = self.term(errmsg)?.into();
         loop {
             let op = self.lexer.peek();
@@ -374,45 +386,36 @@ impl Parser {
         return Ok(rexp);
     }
 
-    fn rexp(&mut self, errmsg: impl Into<String>) -> Result<RExp, ParsingError> {
+    fn rexp(&mut self, errmsg: impl Into<String>) -> Result<RExp, CompileError> {
         return self.rexp_min_prec(0, errmsg);
     }
 
-    fn term(&mut self, errmsg: impl Into<String>) -> Result<Term, ParsingError> {
+    fn term(&mut self, errmsg: impl Into<String>) -> Result<Term, CompileError> {
         let token = self.lexer.peek();
         let term = match token.tokentype {
             TT::Ident(_) => Term::LExp(LExp::Ident(token.into())),
             TT::IntLiteral(_) => Term::IntLit(token.into()),
-            _ => return Err(PErr::unexpected(token, errmsg)),
+            _ => return Err(CompileError::unexpected(token, errmsg)),
         };
         self.lexer.consume()?;
         println!("[Parser] term: {}", term);
         return Ok(term);
     }
 
-    fn lexp(&mut self) -> Result<LExp, ParsingError> {
-        let token = self.lexer.peek();
-        let TT::Ident(_) = token.tokentype else {
-            return Err(PErr::unexpected(token, "An lexpression can only consist of an identifier."));
-        };
-        self.lexer.consume()?;
-        return Ok(LExp::Ident(token.into()));
-    }
-
-    fn ident(&mut self) -> Result<Identifier, ParsingError> {
+    fn ident(&mut self) -> Result<Identifier, CompileError> {
         let token = self.lexer.peek();
         let TT::Ident(_) = token.tokentype else {
 
-            return Err(PErr::unexpected(token, "Expected an identifier."));
+            return Err(CompileError::unexpected(token, "Expected an identifier."));
         };
         self.lexer.consume()?;
         return Ok(token.into());
     }
 
-    fn decl_or_init(&mut self) -> Result<(), ParsingError> {
-        let l_ident = self.ident()?;
-        if self.newline("").is_ok() {
-            let stmt = Stmt::Declare(l_ident);
+    fn decl_or_init(&mut self) -> Result<(), CompileError> {
+        let ident = self.ident()?;
+        if self.newline_or_eof("").is_ok() {
+            let stmt = Stmt::Declare(ident);
             self.program.statements.push(stmt);
             return Ok(());
         }
@@ -421,9 +424,9 @@ impl Parser {
 
         let rexp = self.rexp("What do I initialize it to?")?;
 
-        self.newline("[decl_or_init] Expected a newline.")?;
+        self.newline_or_eof("[decl_or_init] Expected a newline.")?;
 
-        let stmt = Stmt::Initialize(l_ident, rexp);
+        let stmt = Stmt::Initialize(ident, rexp);
         self.program.statements.push(stmt);
 
         return Ok(());
