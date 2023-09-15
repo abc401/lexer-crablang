@@ -4,7 +4,7 @@ use crate::{
 };
 
 use super::lexer::Lexer;
-use std::{fmt::Display, slice::Iter};
+use std::{fmt::Display, rc::Rc, slice::Iter};
 
 #[derive(Debug)]
 pub struct Program {
@@ -25,7 +25,7 @@ impl Display for Program {
 
 #[derive(Debug)]
 pub struct IntLiteral {
-    pub file: Option<String>,
+    pub file: Rc<str>,
     pub start: Location,
     pub end: Location,
     pub lexeme: String,
@@ -52,7 +52,7 @@ impl From<Token> for IntLiteral {
 
 #[derive(Debug, Clone)]
 pub struct Identifier {
-    pub file: Option<String>,
+    pub file: Rc<str>,
     pub start: Location,
     pub end: Location,
     pub lexeme: String,
@@ -258,7 +258,7 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn from_file(path: &str) -> Self {
+    pub fn from_file(path: Rc<str>) -> Self {
         return Self {
             lexer: Lexer::from_file(path),
             program: Program {

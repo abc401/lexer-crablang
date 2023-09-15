@@ -1,12 +1,13 @@
 use std::{
     fmt::{Debug, Display},
     fs::read_to_string,
+    rc::Rc,
     vec,
 };
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Token {
-    pub file: Option<String>,
+    pub file: Rc<str>,
     pub start: Location,
     pub end: Location,
     pub tokentype: TokenType,
@@ -70,15 +71,14 @@ pub struct Lexer {
 
     token_cursor: usize,
     cursor: usize,
-    file: String,
     loc: Location,
 }
 
 impl Lexer {
-    pub fn from_file(path: &str) -> Self {
-        let source = read_to_string(path).expect("Provided input file does not exist!");
+    pub fn from_file(path: Rc<str>) -> Self {
+        let source = read_to_string(path.as_ref()).expect("Provided input file does not exist!");
         let first_token = Token {
-            file: Some(path.into()),
+            file: path.clone(),
             start: Location::default(),
             end: Location::default(),
             tokentype: TT::StartOfFile,
@@ -87,13 +87,16 @@ impl Lexer {
             source: source.chars().collect(),
             peek_ch: None,
             tokens: vec![first_token],
-            next_token: Token::default(),
-            file: path.into(),
+            next_token: Token {
+                file: path.clone(),
+                start: Location::default(),
+                end: Location::default(),
+                tokentype: TT::StartOfFile,
+            },
             cursor: 0,
             token_cursor: 0,
             loc: Location::default(),
         };
-        ret.next_token.file = Some(path.into());
         if ret.source.len() > 0 {
             ret.peek_ch = Some(ret.source[0]);
         }

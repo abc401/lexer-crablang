@@ -3,14 +3,12 @@ mod lexer;
 mod parser;
 mod semantic_anal;
 
-use std::process::exit;
-
+use crate::asmgen::AsmCode;
 use lexer::Token;
 use parser::{Identifier, Parser};
-
 use semantic_anal::analyze;
 
-use crate::asmgen::AsmCode;
+use std::{process::exit, rc::Rc};
 
 #[derive(Debug)]
 pub enum CompileError {
@@ -31,9 +29,9 @@ impl CompileError {
 }
 
 fn main() -> std::io::Result<()> {
-    let args: Vec<String> = std::env::args().collect();
-    let path = &args[1];
-    let mut parser = Parser::from_file(path);
+    let args: Vec<_> = std::env::args().collect();
+    let path: Rc<str> = Rc::from(args[1].clone());
+    let mut parser = Parser::from_file(path.clone());
     let res = parser.parse();
     match res {
         Err(err) => {
@@ -58,7 +56,6 @@ fn main() -> std::io::Result<()> {
     println!("[Semantic Analysis] {:?}", symtable);
     let mut asmcode = AsmCode::default();
     asmcode.genasm(&parser.program, symtable);
-    asmcode.compile(path)?;
+    asmcode.compile(&path)?;
     return Ok(());
-    // asmcode.write_to_file()
 }
