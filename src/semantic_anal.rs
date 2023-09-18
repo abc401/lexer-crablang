@@ -1,80 +1,172 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ptr::NonNull};
 
 use crate::{
-    parser::{Identifier, LExp, Program, RExp, Statement as Stmt, Term},
+    parser::{Identifier, LExp, Program, RExp, Stmt, Term},
     CompileError,
 };
 
 #[derive(Debug)]
 pub struct Symbol {
     pub ident: Identifier,
-    pub rbp_offset: usize,
     pub size_bytes: usize,
+    pub rbp_offset: usize,
     pub initialized: bool,
 }
 
 pub type SymTable = HashMap<String, Symbol>;
 
-pub fn analyze(program: &Program) -> Result<SymTable, CompileError> {
-    let mut symtable: SymTable = HashMap::new();
-    let mut current_rbp_offset = 0;
-    for stmt in program.iter() {
-        match stmt {
-            Stmt::Declare(ident) => {
-                if symtable.contains_key(&ident.lexeme) {
-                    let ident = &symtable.get(&ident.lexeme).unwrap().ident;
-                    return Err(CompileError::RedeclareIdent(ident.clone()));
-                }
-                current_rbp_offset += 8;
-                symtable.insert(
+#[derive(Debug)]
+pub struct Env {
+    prev: Option<NonNull<Env>>,
+    symtable: SymTable,
+    shadow_indices: HashMap<String, i32>,
+    rbp: usize,
+    current_rbp_offset: usize,
+}
+
+impl Env {
+    fn new() -> Self {
+        return Self {
+            prev: None,
+            symtable: HashMap::new(),
+            shadow_indices: HashMap::new(),
+            rbp: 0,
+            current_rbp_offset: 0,
+        };
+    }
+
+    fn get_mut(&mut self, ident: &str) -> Option<&mut Symbol> {
+        let mut env_ptr = NonNull::from(self);
+        loop {
+            let env;
+            unsafe {
+                env = env_ptr.as_mut();
+            }
+            let symbol = env.symtable.get_mut(ident);
+            if symbol.is_some() {
+                return symbol;
+            }
+            match env.prev {
+                None => return None,
+                Some(env_prev) => env_ptr = env_prev,
+            }
+        }
+    }
+
+    pub fn get(&self, ident: &str) -> Option<&Symbol> {
+        let mut env_ptr = NonNull::from(self);
+        loop {
+            let env;
+            unsafe {
+                env = env_ptr.as_ref();
+            }
+            let symbol = env.symtable.get(ident);
+            if symbol.is_some() {
+                return symbol;
+            }
+            match env.prev {
+                None => return None,
+                Some(env_prev) => env_ptr = env_prev,
+            }
+        }
+    }
+
+    fn decorate_ident(&self, ident: &mut Identifier) -> String {
+        let shadow_index = self.get_shadow_index(&ident.lexeme);
+        let mut lexeme = format!("{}_{}", ident.lexeme, shadow_index);
+        std::mem::swap(&mut ident.lexeme, &mut lexeme);
+        println!("Decorated Identifier: {:?}", ident);
+        return lexeme;
+    }
+
+    fn get_shadow_index(&self, undecorated_lexeme: &str) -> i32 {
+        let mut env_ptr = NonNull::from(self);
+        loop {
+            let env;
+            unsafe {
+                env = env_ptr.as_ref();
+            }
+            let shadow_index = env.shadow_indices.get(undecorated_lexeme);
+            if shadow_index.is_some() {
+                return *shadow_index.unwrap();
+            }
+            match env.prev {
+                None => return -1,
+                Some(env_prev) => env_ptr = env_prev,
+            }
+        }
+    }
+
+    fn declare_aux(&mut self, ident: &mut Identifier, initialized: bool) {
+        let symbol = self.symtable.get(&ident.lexeme);
+        match symbol {
+            Some(ident) => {
+                panic!("[Env.insert] redeclaring identifier without encorporating name shadowing: {:?}", ident);
+            }
+            None => {
+                let shadow_index = self.shadow_indices.get(&ident.lexeme).unwrap_or(&0);
+                self.shadow_indices
+                    .insert(ident.lexeme.clone(), shadow_index + 1);
+                self.decorate_ident(ident);
+
+                self.current_rbp_offset += 8;
+
+                self.symtable.insert(
                     ident.lexeme.clone(),
                     Symbol {
                         ident: ident.clone(),
                         size_bytes: 8,
-                        rbp_offset: current_rbp_offset,
-                        initialized: false,
+                        rbp_offset: self.current_rbp_offset,
+                        initialized,
                     },
                 );
+            }
+        }
+    }
+
+    fn declare(&mut self, ident: &mut Identifier) {
+        self.declare_aux(ident, false)
+    }
+    fn init(&mut self, ident: &mut Identifier) {
+        self.declare_aux(ident, true)
+    }
+}
+
+pub fn analyze(program: &mut Program) -> Result<Env, CompileError> {
+    let mut env = Env::new();
+    for stmt in program.iter_mut() {
+        match stmt {
+            Stmt::Declare(ident) => {
+                env.declare(ident);
             }
             Stmt::Initialize(l_ident, rexp) => {
-                if symtable.contains_key(&l_ident.lexeme) {
-                    let ident = &symtable.get(&l_ident.lexeme).unwrap().ident;
-                    return Err(CompileError::RedeclareIdent(ident.clone()));
-                }
-                analyze_rexp(rexp, &mut symtable)?;
-                current_rbp_offset += 8;
-                symtable.insert(
-                    l_ident.lexeme.clone(),
-                    Symbol {
-                        ident: l_ident.clone(),
-                        size_bytes: 8,
-                        rbp_offset: current_rbp_offset,
-                        initialized: true,
-                    },
-                );
+                analyze_rexp(rexp, &mut env)?;
+                env.init(l_ident);
             }
             Stmt::Assign(lexp, rexp) => {
-                analyze_rexp(rexp, &mut symtable)?;
+                analyze_rexp(rexp, &mut env)?;
                 let LExp::Ident(l_ident) = lexp;
-                let l_sym = symtable.get_mut(&l_ident.lexeme);
+                env.decorate_ident(l_ident);
+                let l_sym = env.get_mut(&l_ident.lexeme);
                 if l_sym.is_none() {
                     return Err(CompileError::UseOfUndeclaredIdent(l_ident.clone()));
                 }
                 l_sym.unwrap().initialized = true;
             }
-            Stmt::RExp(rexp) => analyze_rexp(rexp, &mut symtable)?,
+            Stmt::RExp(rexp) => analyze_rexp(rexp, &mut env)?,
             _ => panic!("[Semantic Analysis] Not implemented: {}", stmt),
         }
     }
 
-    return Ok(symtable);
+    return Ok(env);
 }
 
-fn analyze_term(term: &Term, symtable: &SymTable) -> Result<(), CompileError> {
+fn analyze_term(term: &mut Term, env: &Env) -> Result<(), CompileError> {
     match term {
         Term::IntLit(_) => Ok(()),
         Term::LExp(LExp::Ident(ident)) => {
-            let sym = symtable.get(&ident.lexeme);
+            env.decorate_ident(ident);
+            let sym = env.get(&ident.lexeme);
             if sym.is_none() {
                 return Err(CompileError::UseOfUndeclaredIdent(ident.clone()));
             }
@@ -87,9 +179,9 @@ fn analyze_term(term: &Term, symtable: &SymTable) -> Result<(), CompileError> {
     }
 }
 
-fn analyze_rexp(rexp: &RExp, symtable: &SymTable) -> Result<(), CompileError> {
+fn analyze_rexp(rexp: &mut RExp, env: &Env) -> Result<(), CompileError> {
     match rexp {
-        RExp::Term(term) => analyze_term(term, symtable)?,
+        RExp::Term(term) => analyze_term(term, env)?,
         RExp::Add(lhs, rhs)
         | RExp::Sub(lhs, rhs)
         | RExp::Mul(lhs, rhs)
@@ -100,8 +192,8 @@ fn analyze_rexp(rexp: &RExp, symtable: &SymTable) -> Result<(), CompileError> {
         | RExp::LessEqual(lhs, rhs)
         | RExp::Greater(lhs, rhs)
         | RExp::GreaterEqual(lhs, rhs) => {
-            analyze_rexp(lhs, symtable)?;
-            analyze_rexp(rhs, symtable)?;
+            analyze_rexp(lhs, env)?;
+            analyze_rexp(rhs, env)?;
         }
 
         _ => panic!("[Semantic Analysis] Not implemented: {}", rexp),

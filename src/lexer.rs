@@ -51,6 +51,9 @@ pub enum TokenType {
     LessEqual,
     Greater,
     GreaterEqual,
+    SCurly,
+    ECurly,
+    If,
 }
 use TokenType as TT;
 
@@ -103,7 +106,7 @@ impl Lexer {
         return ret;
     }
 
-    fn is_eof(&mut self) -> bool {
+    pub fn is_eof(&mut self) -> bool {
         return self.cursor >= self.source.len();
     }
 
@@ -152,6 +155,8 @@ impl Lexer {
             '-' => self.single_char_token(TT::Minus),
             '*' => self.single_char_token(TT::Asterisk),
             '/' => self.single_char_token(TT::ForwardSlash),
+            '{' => self.single_char_token(TT::SCurly),
+            '}' => self.single_char_token(TT::ECurly),
             '!' => {
                 self.consume_ch();
                 let Some(ch) = self.peek_ch else {
@@ -287,12 +292,9 @@ impl Lexer {
         }
 
         match lexeme.as_str() {
-            "let" => {
-                self.set_next_token(TT::Let);
-            }
-            _ => {
-                self.set_next_token(TT::Ident(lexeme));
-            }
+            "let" => self.set_next_token(TT::Let),
+            "if" => self.set_next_token(TT::If),
+            _ => self.set_next_token(TT::Ident(lexeme)),
         };
     }
 }

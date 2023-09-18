@@ -45,17 +45,21 @@ fn main() -> std::io::Result<()> {
             )
         }
     }
-    let anal_result = analyze(&parser.program);
-    let symtable = match anal_result {
+    let anal_result = analyze(&mut parser.program);
+    let env = match anal_result {
         Err(err) => {
             println!("{:?}", err);
             exit(1)
         }
-        Ok(symtable) => symtable,
+        Ok(env) => env,
     };
-    println!("[Semantic Analysis] {:?}", symtable);
+    println!("[Semantic Analysis] {:?}", env);
+    println!(
+        "-------------------[AST]-----------------\n{}",
+        parser.program
+    );
     let mut asmcode = AsmCode::default();
-    asmcode.genasm(&parser.program, symtable);
+    asmcode.genasm(&parser.program, &env);
     asmcode.compile(&path)?;
     return Ok(());
 }

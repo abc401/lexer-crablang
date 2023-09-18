@@ -4,18 +4,22 @@ use crate::{
 };
 
 use super::lexer::Lexer;
-use std::{fmt::Display, rc::Rc, slice::Iter};
+use std::{
+    fmt::Display,
+    rc::Rc,
+    slice::{Iter, IterMut},
+};
 
 #[derive(Debug)]
 pub struct Program {
-    statements: Vec<Statement>,
+    stmts: Vec<Stmt>,
 }
 
 impl Display for Program {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Program {{\n")?;
-        for stmt in self.statements.iter() {
-            write!(f, "\t{}\n", stmt)?;
+        for stmt in self.stmts.iter() {
+            write!(f, "{}\n", stmt)?;
             write!(f, "---------------------------------------------------\n")?;
         }
         write!(f, "}}")?;
@@ -94,27 +98,40 @@ impl Display for Term {
 }
 
 impl Program {
-    pub fn iter(&self) -> Iter<'_, Statement> {
-        self.statements.iter()
+    pub fn iter(&self) -> Iter<'_, Stmt> {
+        self.stmts.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<'_, Stmt> {
+        self.stmts.iter_mut()
     }
 }
 
 #[derive(Debug)]
-pub enum Statement {
+pub enum Stmt {
     Declare(Identifier),
     Initialize(Identifier, RExp),
     Assign(LExp, RExp),
     RExp(RExp),
+    Scope(Vec<Stmt>),
 }
-use Statement as Stmt;
 
-impl Display for Statement {
+impl Display for Stmt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Declare(ident) => write!(f, "Declare({})", ident),
             Self::Assign(lexp, rexp) => write!(f, "Assign({}, {})", lexp, rexp),
             Self::Initialize(ident, rexp) => write!(f, "Initialize({}, {})", ident, rexp),
             Self::RExp(rexp) => write!(f, "RExp({})", rexp),
+            Self::Scope(scope) => {
+                writeln!(f, "{{")?;
+                for stmt in scope {
+                    writeln!(f, "{}", stmt)?;
+                }
+                writeln!(f, "}}")?;
+                return Ok(());
+            }
+            _ => panic!("[Display for Stmt] unimplemented: {:?}", self),
         }
     }
 }
@@ -171,7 +188,7 @@ impl Display for RExp {
             RExp::Greater(lhs, rhs) => write!(f, "({} > {})", lhs, rhs),
             RExp::GreaterEqual(lhs, rhs) => write!(f, "({} >= {})", lhs, rhs),
             RExp::Term(term) => write!(f, "{}", term),
-            _ => panic!("[RExp.Display] not impleted for: {:?}", self),
+            _ => panic!("[RExp.Display] not implemented for: {:?}", self),
         }
     }
 }
@@ -252,6 +269,19 @@ fn op_prec_and_assoc(tokentype: &TT) -> (usize, OpAssoc) {
     }
 }
 
+macro_rules! parse_terminal {
+    ($lexer:expr, $pattern:pat) => {{
+        let token = $lexer.peek();
+        match token.tokentype {
+            $pattern => {
+                $lexer.consume()?;
+                Ok(token)
+            }
+            _ => Err(token),
+        }
+    }};
+}
+
 pub struct Parser {
     lexer: Lexer,
     pub program: Program,
@@ -261,22 +291,17 @@ impl Parser {
     pub fn from_file(path: Rc<str>) -> Self {
         return Self {
             lexer: Lexer::from_file(path),
-            program: Program {
-                statements: Vec::new(),
-            },
+            program: Program { stmts: Vec::new() },
         };
     }
 
-    pub fn parse(&mut self) -> Result<(), CompileError> {
+    fn parse_aux(&mut self, scope: &mut Vec<Stmt>) -> Result<(), CompileError> {
         loop {
             let token = self.lexer.peek();
             println!("[Parser] Parsing new statement.");
             println!("[Parser] Peek token: {:?}", token);
-            if !self.program.statements.is_empty() {
-                println!(
-                    "[Parser] Statement: {}",
-                    self.program.statements.last().unwrap()
-                )
+            if !self.program.stmts.is_empty() {
+                println!("[Parser] Statement: {}", self.program.stmts.last().unwrap())
             }
             match token.tokentype {
                 TT::StartOfFile | TT::NewLine => {
@@ -287,12 +312,19 @@ impl Parser {
                 TT::EndOfFile => {
                     break;
                 }
+                TT::SCurly => {
+                    self.scope(scope)?;
+                }
+                TT::ECurly => {
+                    return Ok(());
+                }
+
                 TT::Let => {
                     self.lexer.consume()?;
-                    self.decl_or_init()?;
+                    self.decl_or_init(scope)?;
                 }
                 TT::Ident(_) | TT::IntLiteral(_) => {
-                    self.assign_stmt_or_rexp()?;
+                    self.assign_stmt_or_rexp(scope)?;
                 }
                 _ => {
                     return Err(CompileError::unexpected(
@@ -302,6 +334,41 @@ impl Parser {
                 }
             }
         }
+        return Ok(());
+    }
+
+    pub fn parse(&mut self) -> Result<(), CompileError> {
+        let mut stmts = Vec::<Stmt>::new();
+        self.parse_aux(&mut stmts)?;
+        if !self.lexer.is_eof() {
+            let token = self.lexer.peek();
+            return Err(CompileError::unexpected(
+                token,
+                "Could not parser source completely.",
+            ));
+        }
+        std::mem::swap(&mut self.program.stmts, &mut stmts);
+        return Ok(());
+    }
+
+    fn scope(&mut self, parent_scope: &mut Vec<Stmt>) -> Result<(), CompileError> {
+        let res = parse_terminal!(self.lexer, TT::SCurly);
+        if res.is_err() {
+            return Err(CompileError::unexpected(
+                res.unwrap_err(),
+                "[Parser.scope] err 1",
+            ));
+        }
+        let mut scope = Vec::<Stmt>::new();
+        self.parse_aux(&mut scope)?;
+        let res = parse_terminal!(self.lexer, TT::ECurly);
+        if res.is_err() {
+            return Err(CompileError::unexpected(
+                res.unwrap_err(),
+                "[Parser.scope] err 2",
+            ));
+        }
+        parent_scope.push(Stmt::Scope(scope));
         return Ok(());
     }
 
@@ -323,11 +390,10 @@ impl Parser {
         return Ok(());
     }
 
-    fn assign_stmt_or_rexp(&mut self) -> Result<(), CompileError> {
+    fn assign_stmt_or_rexp(&mut self, scope: &mut Vec<Stmt>) -> Result<(), CompileError> {
         let exp = self.rexp("");
         if exp.is_ok() && self.newline_or_eof("").is_ok() {
-            let stmt = Stmt::RExp(exp.unwrap());
-            self.program.statements.push(stmt);
+            scope.push(Stmt::RExp(exp.unwrap()));
             return Ok(());
         }
 
@@ -345,15 +411,14 @@ impl Parser {
             Ok(_) => {}
             Err(_) => {
                 self.newline_or_eof("[assign_stmt_or_rexp] Expected a newline.")?;
-                let stmt = Stmt::RExp(lexp.into());
-                self.program.statements.push(stmt);
+                scope.push(Stmt::RExp(lexp.into()));
                 return Ok(());
             }
         }
 
         println!("[Parser] next token: {:?}", self.lexer.peek());
         let rexp = self.rexp("What do I assign it to?")?;
-        self.program.statements.push(Stmt::Assign(lexp, rexp));
+        scope.push(Stmt::Assign(lexp, rexp));
         return Ok(());
     }
 
@@ -412,11 +477,10 @@ impl Parser {
         return Ok(token.into());
     }
 
-    fn decl_or_init(&mut self) -> Result<(), CompileError> {
+    fn decl_or_init(&mut self, scope: &mut Vec<Stmt>) -> Result<(), CompileError> {
         let ident = self.ident()?;
         if self.newline_or_eof("").is_ok() {
-            let stmt = Stmt::Declare(ident);
-            self.program.statements.push(stmt);
+            scope.push(Stmt::Declare(ident));
             return Ok(());
         }
 
@@ -426,8 +490,7 @@ impl Parser {
 
         self.newline_or_eof("[decl_or_init] Expected a newline.")?;
 
-        let stmt = Stmt::Initialize(ident, rexp);
-        self.program.statements.push(stmt);
+        scope.push(Stmt::Initialize(ident, rexp));
 
         return Ok(());
     }

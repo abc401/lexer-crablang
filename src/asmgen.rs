@@ -1,8 +1,8 @@
 use std::{collections::HashSet, fs::File, io::Write, process::Command};
 
 use crate::{
-    parser::{Identifier, IntLiteral, LExp, Program, RExp, Statement as Stmt, Term},
-    semantic_anal::SymTable,
+    parser::{Identifier, IntLiteral, LExp, Program, RExp, Stmt, Term},
+    semantic_anal::Env,
 };
 
 #[derive(Debug)]
@@ -88,17 +88,17 @@ impl AsmCode {
         return Ok(());
     }
 
-    fn term(&mut self, term: &Term, symtable: &SymTable) {
+    fn term(&mut self, term: &Term, env: &Env) {
         match term {
-            Term::LExp(LExp::Ident(ident)) => self.ident(ident, symtable),
+            Term::LExp(LExp::Ident(ident)) => self.ident(ident, env),
             Term::IntLit(intlit) => self.intlit(intlit),
 
             _ => panic!("[Assembly Generation] Not implemented: {}", term),
         }
     }
 
-    fn ident(&mut self, ident: &Identifier, symtable: &SymTable) {
-        let sym = symtable.get(&ident.lexeme).expect(&format!(
+    fn ident(&mut self, ident: &Identifier, env: &Env) {
+        let sym = env.get(&ident.lexeme).expect(&format!(
             "[AsmGen.rexp] Identifier `{}` in program is not present in symtable",
             ident.lexeme
         ));
@@ -120,13 +120,13 @@ impl AsmCode {
         bin_exp: &RExp,
         lhs: &RExp,
         rhs: &RExp,
-        symtable: &SymTable,
+        env: &Env,
         asm_gen: &mut F,
     ) where
         F: FnMut(&mut Self) -> (),
     {
-        self.rexp(lhs, symtable);
-        self.rexp(rhs, symtable);
+        self.rexp(lhs, env);
+        self.rexp(rhs, env);
 
         self.stmt("");
         self.comment(&format!("{}", bin_exp));
@@ -139,72 +139,66 @@ impl AsmCode {
         self.stmt("push rax");
     }
 
-    fn rexp(&mut self, rexp: &RExp, symtable: &SymTable) {
+    fn rexp(&mut self, rexp: &RExp, env: &Env) {
         match rexp {
-            RExp::Add(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
+            RExp::Add(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, env, &mut |asm| {
                 asm.stmt("add rax, rbx");
             }),
             RExp::Term(term) => {
-                self.term(term, symtable);
+                self.term(term, env);
             }
-            RExp::Sub(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
+            RExp::Sub(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, env, &mut |asm| {
                 asm.stmt("sub rax, rbx");
             }),
-            RExp::Mul(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
+            RExp::Mul(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, env, &mut |asm| {
                 asm.stmt("mul rbx");
             }),
-            RExp::Div(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
+            RExp::Div(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, env, &mut |asm| {
                 asm.stmt("xor rdx, rdx");
                 asm.stmt("div rbx");
             }),
-            RExp::Equal(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
+            RExp::Equal(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, env, &mut |asm| {
                 asm.stmt("cmp rax, rbx");
                 asm.stmt("sete al");
                 asm.stmt("and rax, 255");
             }),
-            RExp::NotEqual(lhs, rhs) => {
-                self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
-                    asm.stmt("cmp rax, rbx");
-                    asm.stmt("setne al");
-                    asm.stmt("and rax, 255");
-                })
-            }
-            RExp::Less(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
+            RExp::NotEqual(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, env, &mut |asm| {
+                asm.stmt("cmp rax, rbx");
+                asm.stmt("setne al");
+                asm.stmt("and rax, 255");
+            }),
+            RExp::Less(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, env, &mut |asm| {
                 asm.stmt("cmp rax, rbx");
                 asm.stmt("setl al");
                 asm.stmt("and rax, 255");
             }),
-            RExp::LessEqual(lhs, rhs) => {
-                self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
-                    asm.stmt("cmp rax, rbx");
-                    asm.stmt("setle al");
-                    asm.stmt("and rax, 255");
-                })
-            }
-            RExp::Greater(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
+            RExp::LessEqual(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, env, &mut |asm| {
+                asm.stmt("cmp rax, rbx");
+                asm.stmt("setle al");
+                asm.stmt("and rax, 255");
+            }),
+            RExp::Greater(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, env, &mut |asm| {
                 asm.stmt("cmp rax, rbx");
                 asm.stmt("setg al");
                 asm.stmt("and rax, 255");
             }),
-            RExp::GreaterEqual(lhs, rhs) => {
-                self.binary_operator(rexp, lhs, rhs, symtable, &mut |asm| {
-                    asm.stmt("cmp rax, rbx");
-                    asm.stmt("setge al");
-                    asm.stmt("and rax, 255");
-                })
-            }
+            RExp::GreaterEqual(lhs, rhs) => self.binary_operator(rexp, lhs, rhs, env, &mut |asm| {
+                asm.stmt("cmp rax, rbx");
+                asm.stmt("setge al");
+                asm.stmt("and rax, 255");
+            }),
             _ => panic!("[Assembly Generation] Not implemented: {}", rexp),
         }
     }
 
-    pub fn genasm(&mut self, program: &Program, symtable: SymTable) {
+    pub fn genasm(&mut self, program: &Program, env: &Env) {
         self.label("_start");
         self.stmt("mov rbp, rsp");
 
         for stmt in program.iter() {
             match stmt {
                 Stmt::Declare(ident) => {
-                    let sym = symtable.get(&ident.lexeme).expect(&format!(
+                    let sym = env.get(&ident.lexeme).expect(&format!(
                         "[AsmGen] Identifier `{}` in program is not present in symtable",
                         ident.lexeme
                     ));
@@ -214,7 +208,7 @@ impl AsmCode {
                     self.stmt(&format!("sub rsp, {}", sym.size_bytes));
                 }
                 Stmt::Initialize(l_ident, rexp) => {
-                    let l_sym = symtable.get(&l_ident.lexeme).expect(&format!(
+                    let l_sym = env.get(&l_ident.lexeme).expect(&format!(
                         "[AsmGen] Identifier `{}` in program is not present in symtable",
                         l_ident.lexeme
                     ));
@@ -225,20 +219,26 @@ impl AsmCode {
                     self.comment(&format!("let {}", l_ident.lexeme));
                     self.stmt(&format!("sub rsp, {}", l_sym.size_bytes));
 
-                    self.rexp(rexp, &symtable);
+                    self.rexp(rexp, env);
+
+                    self.stmt("");
+                    self.comment(&format!("let {} = {}", l_ident.lexeme, rexp));
                     self.stmt("pop rax");
 
                     self.stmt(&format!("mov qword [rbp-{}], rax", l_sym.rbp_offset));
                 }
                 Stmt::Assign(lexp, rexp) => {
                     let LExp::Ident(l_ident) = lexp;
-                    let l_sym = symtable.get(&l_ident.lexeme).expect(&format!(
+                    let l_sym = env.get(&l_ident.lexeme).expect(&format!(
                         "[AsmGen] Identifier `{}` in program is not present in symtable",
                         l_ident.lexeme
                     ));
                     self.stmt("");
                     self.comment_emp(&format!("{} = {}", l_ident.lexeme, rexp));
-                    self.rexp(rexp, &symtable);
+                    self.rexp(rexp, env);
+
+                    self.stmt("");
+                    self.comment(&format!("{} = {}", l_ident.lexeme, rexp));
                     self.stmt("pop rax");
                     self.stmt(&format!("mov qword [rbp-{}], rax", l_sym.rbp_offset));
                 }
