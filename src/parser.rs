@@ -114,6 +114,7 @@ pub enum Stmt {
     Assign(LExp, RExp),
     RExp(RExp),
     Scope(Vec<Stmt>),
+    Exit(RExp),
 }
 
 impl Display for Stmt {
@@ -130,6 +131,9 @@ impl Display for Stmt {
                 }
                 writeln!(f, "}}")?;
                 return Ok(());
+            }
+            Self::Exit(rexp) => {
+                write!(f, "Exit({})", rexp)
             }
             _ => panic!("[Display for Stmt] unimplemented: {:?}", self),
         }
@@ -282,6 +286,12 @@ macro_rules! parse_terminal {
     }};
 }
 
+macro_rules! stmt_terminator {
+    () => {
+        TT::EndOfFile | TT::NewLine
+    };
+}
+
 pub struct Parser {
     lexer: Lexer,
     pub program: Program,
@@ -325,6 +335,9 @@ impl Parser {
                 }
                 TT::Ident(_) | TT::IntLiteral(_) => {
                     self.assign_stmt_or_rexp(scope)?;
+                }
+                TT::Exit => {
+                    self.exit(scope)?;
                 }
                 _ => {
                     return Err(CompileError::unexpected(
@@ -378,6 +391,20 @@ impl Parser {
             return Err(CompileError::unexpected(token, errmsg));
         }
         self.lexer.consume()?;
+        return Ok(());
+    }
+
+    fn exit(&mut self, scope: &mut Vec<Stmt>) -> Result<(), CompileError> {
+        match parse_terminal!(self.lexer, TT::Exit) {
+            Ok(_) => (),
+            Err(token) => return Err(CompileError::unexpected(token, "expected `exit` keyword")),
+        };
+        let rexp = self.rexp("Expected an rexpression")?;
+        match parse_terminal!(self.lexer, stmt_terminator!()) {
+            Ok(_) => (),
+            Err(token) => return Err(CompileError::unexpected(token, "expected a newline")),
+        };
+        scope.push(Stmt::Exit(rexp));
         return Ok(());
     }
 

@@ -6,6 +6,7 @@ $$
         \text{let } [Ident] = [RExp] [NewLine] \\
         [RExp] [NewLine] \\
         [LExp] = [RExp] [NewLine] \\
+        \text{exit } [RExp] [NewLine] \\
     \end{cases} \\
 
     RExp &\to \begin{cases}

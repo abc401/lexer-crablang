@@ -189,7 +189,8 @@ impl Asm {
                     self.stmt(format!("sub rsp, {}", sym.size_bytes));
                 }
                 Stmt::Initialize(l_ident, rexp) => {
-                    self.comment_emp("");
+                    self.stmt("");
+                    self.comment_emp(format!("let {} = {}", l_ident, rexp));
                     self.stmt("");
 
                     self.rexp(rexp, env)?;
@@ -228,6 +229,14 @@ impl Asm {
                 Stmt::RExp(rexp) => {
                     self.comment_emp(format!("{}", rexp));
                     self.rexp(rexp, env)?;
+                }
+                Stmt::Exit(rexp) => {
+                    self.comment_emp("");
+                    self.rexp(rexp, env)?;
+                    self.stmt("");
+                    self.comment(format!("exit {}", rexp));
+                    self.stmt("mov rcx, rax");
+                    self.stmt("call ExitProcess");
                 }
 
                 _ => panic!("[Assembly Generation] Not implemented: {}", stmt),

@@ -51,6 +51,7 @@ pub enum TokenType {
     LessEqual,
     Greater,
     GreaterEqual,
+    Exit,
     SCurly,
     ECurly,
     If,
@@ -294,6 +295,7 @@ impl Lexer {
         match lexeme.as_str() {
             "let" => self.set_next_token(TT::Let),
             "if" => self.set_next_token(TT::If),
+            "exit" => self.set_next_token(TT::Exit),
             _ => self.set_next_token(TT::Ident(lexeme)),
         };
     }
