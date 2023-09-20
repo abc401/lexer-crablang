@@ -2,8 +2,8 @@ $$
 \begin{align}
     Program &\to [Stmt]^* \\
     Stmt &\to \begin{cases}
-        \text{let } [Ident]\text{: } [TypeIdent] [NewLine] \\
-        \text{let } [Ident]\text{: } [TypeIdent] = [RExp] [NewLine] \\
+        \text{let } [Ident] [NewLine] \\
+        \text{let } [Ident] = [RExp] [NewLine] \\
         [RExp] [NewLine] \\
         [LExp] = [RExp] [NewLine] \\
     \end{cases} \\

@@ -1,12 +1,10 @@
 mod codegen;
 mod lexer;
 mod parser;
-// mod semantic_anal;
 
 use crate::codegen::{Asm, Env};
 use lexer::Token;
 use parser::{Identifier, Parser};
-// use semantic_anal::analyze;
 
 use std::{process::exit, rc::Rc};
 

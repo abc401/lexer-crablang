@@ -27,3 +27,5 @@ rust-project.json
 tmp*
 *.toyl.*
 *.toyl
+
+semantic_anal.*
