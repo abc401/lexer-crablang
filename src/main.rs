@@ -1,12 +1,12 @@
-mod asmgen;
+mod codegen;
 mod lexer;
 mod parser;
-mod semantic_anal;
+// mod semantic_anal;
 
-use crate::asmgen::AsmCode;
+use crate::codegen::{Asm, Env};
 use lexer::Token;
 use parser::{Identifier, Parser};
-use semantic_anal::analyze;
+// use semantic_anal::analyze;
 
 use std::{process::exit, rc::Rc};
 
@@ -45,21 +45,20 @@ fn main() -> std::io::Result<()> {
             )
         }
     }
-    let anal_result = analyze(&mut parser.program);
-    let env = match anal_result {
-        Err(err) => {
-            println!("{:?}", err);
-            exit(1)
-        }
-        Ok(env) => env,
-    };
-    println!("[Semantic Analysis] {:?}", env);
     println!(
         "-------------------[AST]-----------------\n{}",
         parser.program
     );
-    let mut asmcode = AsmCode::default();
-    asmcode.genasm(&parser.program, &env);
-    asmcode.compile(&path)?;
+    let mut asm = Asm::default();
+    let mut env = Env::new();
+    let res = asm.gen(&parser.program, &mut env);
+    match res {
+        Err(err) => {
+            println!("Error: {:?}", err);
+            exit(1);
+        }
+        _ => (),
+    }
+    asm.compile(path)?;
     return Ok(());
 }
