@@ -239,7 +239,7 @@ impl Asm {
                     self.stmt("call ExitProcess");
                 }
 
-                _ => panic!("[Assembly Generation] Not implemented: {}", stmt),
+                _ => panic!("[Assembly Generation] Not implemented for Stmt: {}", stmt),
             }
         }
 
@@ -320,8 +320,18 @@ impl Asm {
         match term {
             Term::LExp(LExp::Ident(ident)) => self.ident(ident, env),
             Term::IntLit(intlit) => self.intlit(intlit),
+            Term::Neg(inner_term) => {
+                self.term(inner_term, env)?;
+                self.stmt("pop rax");
+                self.stmt("");
+                self.comment(format!("{}", term));
+                self.stmt("neg rax");
+                self.stmt("push rax");
+                return Ok(());
+            }
+            Term::Bracketed(rexp) => self.rexp(rexp, env),
 
-            _ => panic!("[Assembly Generation] Not implemented: {}", term),
+            _ => panic!("[Assembly Generation] Not implemented for term: {}", term),
         }
     }
 
@@ -419,7 +429,7 @@ impl Asm {
                 asm.stmt("setge al");
                 asm.stmt("and rax, 255");
             }),
-            _ => panic!("[Assembly Generation] Not implemented: {}", rexp),
+            _ => panic!("[Assembly Generation] Not implemented for RExp: {}", rexp),
         }
         // return Ok(());
     }

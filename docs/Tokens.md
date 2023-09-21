@@ -30,11 +30,19 @@ Following are examples of invalid identifiers:
 
 - `abc def`
 - `123abc`
-- `1nvalid_identifier` <- has a `1` at the start
+- `1nvalid_identifier`
 
 ## Keywords
 
-The only keyword that Toylang supports as of yet is `let`. It is used to initialize or declare a variable.
+Following are the different types of keywords that are supported by toylang:
+
+### Let
+
+The `let` keyword can be used to initialize or declare a variable.
+
+### Exit
+
+The `exit` keyword can be used to exit at any part of the program with the desired exit code.
 
 ## Operators
 
@@ -42,8 +50,19 @@ Following is a brief description of the different operator tokens that toylang c
 
 ### Assignment: `=`
 
-This is the assignment operator and it can be used to assign values to identifiers.
+This is the assignment operator and it can be used to assign values to variables.
 
 ### Arithmatic Operators
 
 Toylang now supports arithmatic operations such as addition, subtraction, multiplication, division. As you would expect, these operations are accomplished by using the `+`, `-`, `*` and the `/` characters respectively.
+
+### Comparison Operators
+
+All the different types of comparisons are supported by toylang, namely they are:
+
+- Less than: `<`.
+- Less than or equal to: `<=`.
+- Greater than: `>`.
+- Greater than or equal to: `>=`.
+- Equal to: `==`.
+- Not equal to: `!=`.

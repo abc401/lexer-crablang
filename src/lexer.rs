@@ -5,6 +5,8 @@ use std::{
     vec,
 };
 
+const DEBUG_TOKENS: bool = true;
+
 #[derive(Debug, Clone)]
 pub struct Token {
     pub file: Rc<str>,
@@ -34,29 +36,61 @@ impl Display for Location {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TokenType {
     StartOfFile,
-    NewLine,
+    EndOfFile,
+
     Ident(String),
     IntLiteral(String),
     Illegal(String),
+
     Let,
-    EndOfFile,
+    Exit,
+    If,
+
+    NewLine,
+
     Assign,
+
     Plus,
     Minus,
     Asterisk,
     ForwardSlash,
+
     Equal,
     NotEqual,
     Less,
     LessEqual,
     Greater,
     GreaterEqual,
-    Exit,
+
     SCurly,
     ECurly,
-    If,
+
+    SBrace,
+    EBrace,
 }
 use TokenType as TT;
+
+const TOKENTYPE_MAPPINGS: &[(&str, TT)] = &[
+    ("exit", TT::Exit),
+    ("let", TT::Let),
+    ("if", TT::If),
+    ("==", TT::Equal),
+    ("!=", TT::NotEqual),
+    ("<=", TT::LessEqual),
+    (">=", TT::GreaterEqual),
+    ("+", TT::Plus),
+    ("-", TT::Minus),
+    ("*", TT::Asterisk),
+    ("/", TT::ForwardSlash),
+    ("=", TT::Assign),
+    ("<", TT::Less),
+    (">", TT::Greater),
+    ("{", TT::SCurly),
+    ("}", TT::ECurly),
+    ("(", TT::SBrace),
+    (")", TT::EBrace),
+    ("\n", TT::NewLine),
+];
 
 use crate::CompileError;
 
@@ -69,13 +103,16 @@ impl Default for TokenType {
 #[derive(Debug)]
 pub struct Lexer {
     source: Vec<char>,
-    peek_ch: Option<char>,
     tokens: Vec<Token>,
-    next_token: Token,
 
+    next_token: Token,
     token_cursor: usize,
-    cursor: usize,
+
+    peek_ch: Option<char>,
+    ch_cursor: usize,
+
     loc: Location,
+    pub emit_newline: bool,
 }
 
 impl Lexer {
@@ -97,9 +134,10 @@ impl Lexer {
                 end: Location::default(),
                 tokentype: TT::StartOfFile,
             },
-            cursor: 0,
+            ch_cursor: 0,
             token_cursor: 0,
             loc: Location::default(),
+            emit_newline: true,
         };
         if ret.source.len() > 0 {
             ret.peek_ch = Some(ret.source[0]);
@@ -108,20 +146,26 @@ impl Lexer {
     }
 
     pub fn is_eof(&mut self) -> bool {
-        return self.cursor >= self.source.len();
+        return self.ch_cursor >= self.source.len();
     }
 
     pub fn peek(&self) -> Token {
         return self.tokens[self.token_cursor].clone();
     }
 
-    fn make_next_token(&mut self) {
+    fn prepare_next_token(&mut self) {
         self.next_token.start = self.loc;
     }
 
     fn set_next_token(&mut self, tokentype: TokenType) {
+        if DEBUG_TOKENS {
+            println!("[Lexer] emit_newline: {}", self.emit_newline);
+            println!("[Lexer] lexed: {:?}", tokentype);
+        }
+
         self.next_token.tokentype = tokentype;
         self.next_token.end = self.loc;
+
         self.tokens.push(self.next_token.clone());
         self.token_cursor += 1;
     }
@@ -133,9 +177,21 @@ impl Lexer {
         self.token_cursor -= 1;
     }
 
-    fn single_char_token(&mut self, tokentype: TokenType) {
-        self.consume_ch();
-        self.set_next_token(tokentype);
+    fn try_consume_str(&mut self, string: &str) -> bool {
+        let mut cursor = self.ch_cursor;
+        for c in string.chars() {
+            if cursor >= self.source.len() {
+                return false;
+            }
+            if c != self.source[cursor] {
+                return false;
+            }
+            cursor += 1;
+        }
+        for _ in string.chars() {
+            self.consume_ch();
+        }
+        return true;
     }
 
     pub fn consume(&mut self) -> Result<(), CompileError> {
@@ -145,63 +201,20 @@ impl Lexer {
             return Ok(());
         }
         self.skip_whitespace();
-        self.make_next_token();
+        self.prepare_next_token();
         let Some(ch) = self.peek_ch else {
             self.set_next_token(TT::EndOfFile);
             return Ok(());
         };
+
+        for (string, tokentype) in TOKENTYPE_MAPPINGS.iter() {
+            if self.try_consume_str(string) {
+                self.set_next_token(tokentype.clone());
+                return Ok(());
+            }
+        }
+
         match ch {
-            '\n' => self.single_char_token(TT::NewLine),
-            '+' => self.single_char_token(TT::Plus),
-            '-' => self.single_char_token(TT::Minus),
-            '*' => self.single_char_token(TT::Asterisk),
-            '/' => self.single_char_token(TT::ForwardSlash),
-            '{' => self.single_char_token(TT::SCurly),
-            '}' => self.single_char_token(TT::ECurly),
-            '!' => {
-                self.consume_ch();
-                let Some(ch) = self.peek_ch else {
-                    self.set_next_token(TT::Illegal('!'.into()));
-                    return Ok(());
-                };
-                match ch {
-                    '=' => self.single_char_token(TT::NotEqual),
-                    _ => self.set_next_token(TT::Illegal('!'.into())),
-                }
-            }
-            '>' => {
-                self.consume_ch();
-                let Some(ch) = self.peek_ch else {
-                    self.set_next_token(TT::Greater);
-                    return Ok(());
-                };
-                match ch {
-                    '=' => self.single_char_token(TT::GreaterEqual),
-                    _ => self.set_next_token(TT::Greater),
-                }
-            }
-            '<' => {
-                self.consume_ch();
-                let Some(ch) = self.peek_ch else {
-                    self.set_next_token(TT::Less);
-                    return Ok(());
-                };
-                match ch {
-                    '=' => self.single_char_token(TT::LessEqual),
-                    _ => self.set_next_token(TT::Less),
-                }
-            }
-            '=' => {
-                self.consume_ch();
-                let Some(ch) = self.peek_ch else {
-                    self.set_next_token(TT::Assign);
-                    return Ok(());
-                };
-                match ch {
-                    '=' => self.single_char_token(TT::Equal),
-                    _ => self.set_next_token(TT::Assign),
-                }
-            }
             ch if ch.is_ascii_alphabetic() || ch == '_' => self.ident_or_keyword(),
             ch if ch.is_ascii_digit() => self.int_literal()?,
             ch => {
@@ -217,27 +230,26 @@ impl Lexer {
             return;
         }
 
-        self.cursor += 1;
+        self.ch_cursor += 1;
 
         if let Some('\n') = self.peek_ch {
             self.loc.row += 1;
             self.loc.col = 1;
-        } else if !self.is_eof() && self.source[self.cursor] != '\n' {
+        } else if !self.is_eof() && self.source[self.ch_cursor] != '\n' {
             self.loc.col += 1;
         }
 
         if !self.is_eof() {
-            self.peek_ch = Some(self.source[self.cursor as usize]);
+            self.peek_ch = Some(self.source[self.ch_cursor as usize]);
         } else {
             self.peek_ch = None;
         }
     }
 
     fn skip_whitespace(&mut self) {
-        while self
-            .peek_ch
-            .map_or(false, |ch| ch.is_whitespace() && ch != '\n')
-        {
+        while self.peek_ch.map_or(false, |ch| {
+            (ch != '\n' && ch.is_whitespace()) || (ch == '\n' && !self.emit_newline)
+        }) {
             self.consume_ch();
         }
     }

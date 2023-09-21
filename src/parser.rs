@@ -86,6 +86,8 @@ impl From<Token> for Identifier {
 pub enum Term {
     LExp(LExp),
     IntLit(IntLiteral),
+    Neg(Box<Term>),
+    Bracketed(Box<RExp>),
 }
 
 impl Display for Term {
@@ -93,6 +95,9 @@ impl Display for Term {
         match self {
             Self::LExp(LExp::Ident(ident)) => write!(f, "{}", ident.lexeme),
             Self::IntLit(intlit) => write!(f, "{}", intlit.lexeme),
+            Self::Neg(term) => write!(f, "-{}", term),
+            Self::Bracketed(rexp) => write!(f, "({})", rexp),
+            _ => panic!("[Display for Term] not implemented: {:?}", self),
         }
     }
 }
@@ -294,6 +299,7 @@ macro_rules! stmt_terminator {
 
 pub struct Parser {
     lexer: Lexer,
+    rexp_nesting_level: u32,
     pub program: Program,
 }
 
@@ -302,6 +308,7 @@ impl Parser {
         return Self {
             lexer: Lexer::from_file(path),
             program: Program { stmts: Vec::new() },
+            rexp_nesting_level: 0,
         };
     }
 
@@ -483,15 +490,40 @@ impl Parser {
     }
 
     fn term(&mut self, errmsg: impl Into<String>) -> Result<Term, CompileError> {
+        match parse_terminal!(self.lexer, TT::Ident(_)) {
+            Ok(token) => return Ok(Term::LExp(LExp::Ident(token.into()))),
+            _ => (),
+        }
+        match parse_terminal!(self.lexer, TT::IntLiteral(_)) {
+            Ok(token) => return Ok(Term::IntLit(token.into())),
+            _ => (),
+        }
+        match parse_terminal!(self.lexer, TT::Minus) {
+            Ok(_) => return Ok(Term::Neg(Box::new(self.term(errmsg)?))),
+            _ => (),
+        }
         let token = self.lexer.peek();
-        let term = match token.tokentype {
-            TT::Ident(_) => Term::LExp(LExp::Ident(token.into())),
-            TT::IntLiteral(_) => Term::IntLit(token.into()),
-            _ => return Err(CompileError::unexpected(token, errmsg)),
-        };
-        self.lexer.consume()?;
-        println!("[Parser] term: {}", term);
-        return Ok(term);
+        match token.tokentype {
+            TT::SBrace => {
+                self.rexp_nesting_level += 1;
+                self.lexer.emit_newline = false;
+                self.lexer.consume()?;
+            }
+            _ => return Err(CompileError::unexpected(token, "Starting brace expected.")),
+        }
+        let rexp = self.rexp(errmsg)?;
+        let token = self.lexer.peek();
+        match token.tokentype {
+            TT::EBrace => {
+                self.rexp_nesting_level -= 1;
+                if self.rexp_nesting_level <= 0 {
+                    self.lexer.emit_newline = true;
+                }
+                self.lexer.consume()?;
+            }
+            _ => return Err(CompileError::unexpected(token, "Ending brace expected.")),
+        }
+        return Ok(Term::Bracketed(Box::new(rexp)));
     }
 
     fn ident(&mut self) -> Result<Identifier, CompileError> {
