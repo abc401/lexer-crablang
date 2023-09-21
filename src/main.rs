@@ -43,13 +43,13 @@ fn main() -> std::io::Result<()> {
             )
         }
     }
-    println!(
-        "-------------------[AST]-----------------\n{}",
-        parser.program
-    );
+    // println!(
+    //     "-------------------[AST]-----------------\n{}",
+    //     parser.program
+    // );
     let mut asm = Asm::default();
     let mut env = Env::new();
-    let res = asm.gen(&parser.program, &mut env);
+    let res = asm.gen(&parser.program.stmts, &mut env);
     match res {
         Err(err) => {
             println!("Error: {:?}", err);

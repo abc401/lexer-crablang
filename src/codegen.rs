@@ -171,11 +171,8 @@ impl Default for Asm {
 }
 
 impl Asm {
-    pub fn gen(&mut self, program: &Program, env: &mut Env) -> Result<(), CompileError> {
-        self.label("_start");
-        self.stmt("mov rbp, rsp");
-
-        for stmt in program.iter() {
+    fn gen_aux(&mut self, stmts: &Vec<Stmt>, env: &mut Env) -> Result<(), CompileError> {
+        for stmt in stmts.iter() {
             match stmt {
                 Stmt::Declare(ident) => {
                     env.declare(ident);
@@ -202,10 +199,10 @@ impl Asm {
                     ));
                     let lexeme = &l_sym.decorated_lexeme;
 
-                    self.stmt("pop rax");
-
                     self.stmt("");
                     self.comment(&format!("let {} = {}", lexeme, rexp));
+
+                    self.stmt("pop rax");
                     self.stmt(&format!("sub rsp, {}", l_sym.size_bytes));
                     self.stmt(&format!("mov qword [rbp-{}], rax", l_sym.rbp_offset));
                 }
@@ -235,13 +232,25 @@ impl Asm {
                     self.rexp(rexp, env)?;
                     self.stmt("");
                     self.comment(format!("exit {}", rexp));
+                    self.stmt("pop rax");
                     self.stmt("mov rcx, rax");
                     self.stmt("call ExitProcess");
+                }
+                Stmt::Scope(scope) => {
+                    let mut new_env = Env::with_tail(&env);
+                    self.gen_aux(scope, &mut new_env)?;
                 }
 
                 _ => panic!("[Assembly Generation] Not implemented for Stmt: {}", stmt),
             }
         }
+        return Ok(());
+    }
+    pub fn gen(&mut self, stmts: &Vec<Stmt>, env: &mut Env) -> Result<(), CompileError> {
+        self.label("_start");
+        self.stmt("mov rbp, rsp");
+
+        self.gen_aux(stmts, env)?;
 
         self.stmt("");
         self.comment_emp("Exit with exit code 0");
