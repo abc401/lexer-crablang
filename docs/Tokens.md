@@ -4,7 +4,7 @@ Following are the different tokens supported by the language as of yet:
 
 ## Literals
 
-Toylang, currently, only supports positive, decimal, int literals. Following are all examples of correct int literals:
+Toylang, currently only supports decimal int literals. Following are all examples of correct int literals:
 
 - `123`
 - `0000132`
@@ -12,10 +12,10 @@ Toylang, currently, only supports positive, decimal, int literals. Following are
 
 Following are examples of invalid int literals:
 
-- `-123`
 - `135ab32`
 - `0x23af`
 - `13_523_562`
+- `3525.534`
 
 ## Identifiers
 
@@ -48,9 +48,9 @@ The `exit` keyword can be used to exit at any part of the program with the desir
 
 Following is a brief description of the different operator tokens that toylang currently supports and what those tokens are meant to do:
 
-### Assignment: `=`
+### Assignment:
 
-This is the assignment operator and it can be used to assign values to variables.
+The `=` character is used as the assignment operator and it can be used to assign values to variables.
 
 ### Arithmatic Operators
 
@@ -66,3 +66,13 @@ All the different types of comparisons are supported by toylang, namely they are
 - Greater than or equal to: `>=`.
 - Equal to: `==`.
 - Not equal to: `!=`.
+
+### Unary Operators
+
+Toylang supports the unary negation operator `-`.
+
+## Delimiters
+
+Toylang supports adding a pair of brackets around an expression to make it have a heigher precedence than its surroundings. For example:
+
+- In the expression `1 - (2 + 3)`, the `2 + 3` is evaluated before everything else.

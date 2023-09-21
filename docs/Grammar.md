@@ -1,33 +1,30 @@
-$$
-\begin{align}
-    Program &\to [Stmt]^* \\
-    Stmt &\to \begin{cases}
-        \text{let } [Ident] [NewLine] \\
-        \text{let } [Ident] = [RExp] [NewLine] \\
-        [RExp] [NewLine] \\
-        [LExp] = [RExp] [NewLine] \\
-        \text{exit } [RExp] [NewLine] \\
-    \end{cases} \\
+$Program \to [Stmt]^\text{*}$
 
-    RExp &\to \begin{cases}
-        [Term] \\
-        [RExp] \text{ + }  [RExp] \\
-        [RExp] \text{ - }  [RExp] \\
-        [RExp] \text{ == } [RExp] \\
-        [RExp] \text{ != } [RExp] \\
-        [RExp] \text{ < }  [RExp] \\
-        [RExp] \text{ <= } [RExp] \\
-        [RExp] \text{ > }  [RExp] \\
-        [RExp] \text{ >= } [RExp] \\
-    \end{cases} \\
+$Stmt \to \begin{cases}
+\text{let } [Ident] [NewLine] \\
+\text{let } [Ident] = [RExp] [NewLine] \\
+[RExp] [NewLine] \\
+[LExp] = [RExp] [NewLine] \\
+\text{exit } [RExp] [NewLine] \\
+\end{cases}$
 
-    Term &\to \begin{cases}
-        [IntLit] \\
-        [LExp] \\
-    \end{cases} \\
+$RExp \to \begin{cases}
+    [Term] \\
+    [RExp] \text{ + }  [RExp] \\
+    [RExp] \text{ - }  [RExp] \\
+    [RExp] \text{ == } [RExp] \\
+    [RExp] \text{ != } [RExp] \\
+    [RExp] \text{ < }  [RExp] \\
+    [RExp] \text{ <= } [RExp] \\
+    [RExp] \text{ > }  [RExp] \\
+    [RExp] \text{ >= } [RExp] \\
+\end{cases}$
 
-    LExp &\to \begin{cases}
-        [Ident]
-    \end{cases} \\
-\end{align}
-$$
+$Term \to \begin{cases}
+    [IntLit] \\
+    [LExp] \\
+    -[Term] \\
+    ([RExp]) \\
+\end{cases} \\$
+
+$LExp \to [Ident]$
