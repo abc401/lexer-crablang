@@ -73,6 +73,25 @@ Toylang supports the unary negation operator `-`.
 
 ## Delimiters
 
-Toylang supports adding a pair of brackets around an expression to make it have a heigher precedence than its surroundings. For example:
+### Brackets i.e. `()`
 
-- In the expression `1 - (2 + 3)`, the `2 + 3` is evaluated before everything else.
+Toylang supports adding a pair of brackets around an expression to make it have a heigher precedence than its surroundings. Following is an example of this:
+
+- `1 - 2 + 3` == `2`
+- `1 - (2 + 3)` == `-4`
+
+Another reason you might want to consider putting brackets around your expressions is if you want to split it on different lines. You can do this in the following way:
+
+```rust
+let a = 1 +
+    2 + 3   // Syntax Error
+
+let a = 1 + (
+    2 + 3
+    + 4
+)   // This is fine
+```
+
+### Curly Braces i.e. `{}`
+
+The curly braces can be used to start a new scope. In this new scope all the variables of the parent scope are accessible but the variables of the variables of the child scope are not accessible by the parent scope
