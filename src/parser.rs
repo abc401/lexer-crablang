@@ -112,13 +112,16 @@ impl Program {
     }
 }
 
+type Block = Vec<Stmt>;
+
 #[derive(Debug)]
 pub enum Stmt {
     Declare(Identifier),
     Initialize(Identifier, RExp),
     Assign(LExp, RExp),
     RExp(RExp),
-    Scope(Vec<Stmt>),
+    Block(Block),
+    If(RExp, Block),
     Exit(RExp),
 }
 
@@ -129,17 +132,24 @@ impl Display for Stmt {
             Self::Assign(lexp, rexp) => write!(f, "Assign({}, {})", lexp, rexp),
             Self::Initialize(ident, rexp) => write!(f, "Initialize({}, {})", ident, rexp),
             Self::RExp(rexp) => write!(f, "RExp({})", rexp),
-            Self::Scope(scope) => {
+            Self::Block(block) => {
                 writeln!(f, "{{")?;
-                for stmt in scope {
+                for stmt in block {
                     writeln!(f, "{}", stmt)?;
                 }
                 writeln!(f, "}}")?;
                 return Ok(());
             }
-            Self::Exit(rexp) => {
-                write!(f, "Exit({})", rexp)
+            Self::If(rexp, block) => {
+                writeln!(f, "if {} {{", rexp)?;
+                for stmt in block {
+                    writeln!(f, "{}", stmt)?;
+                }
+                writeln!(f, "}}")?;
+                return Ok(());
             }
+
+            Self::Exit(rexp) => write!(f, "Exit({})", rexp),
             _ => panic!("[Display for Stmt] unimplemented: {:?}", self),
         }
     }
@@ -312,51 +322,6 @@ impl Parser {
         };
     }
 
-    fn parse_aux(&mut self, scope: &mut Vec<Stmt>) -> Result<(), CompileError> {
-        loop {
-            let token = self.lexer.peek();
-            println!("[Parser] Parsing new statement.");
-            println!("[Parser] Peek token: {:?}", token);
-            if !self.program.stmts.is_empty() {
-                println!("[Parser] Statement: {}", self.program.stmts.last().unwrap())
-            }
-            match token.tokentype {
-                TT::StartOfFile | TT::NewLine => {
-                    self.lexer.consume()?;
-                    continue;
-                }
-
-                TT::EndOfFile => {
-                    break;
-                }
-                TT::SCurly => {
-                    self.scope(scope)?;
-                }
-                TT::ECurly => {
-                    return Ok(());
-                }
-
-                TT::Let => {
-                    self.lexer.consume()?;
-                    self.decl_or_init(scope)?;
-                }
-                TT::Ident(_) | TT::IntLiteral(_) => {
-                    self.assign_stmt_or_rexp(scope)?;
-                }
-                TT::Exit => {
-                    self.exit(scope)?;
-                }
-                _ => {
-                    return Err(CompileError::unexpected(
-                        token,
-                        "Invalid token for starting a statement",
-                    ));
-                }
-            }
-        }
-        return Ok(());
-    }
-
     pub fn parse(&mut self) -> Result<(), CompileError> {
         let mut stmts = Vec::<Stmt>::new();
         self.parse_aux(&mut stmts)?;
@@ -371,25 +336,71 @@ impl Parser {
         return Ok(());
     }
 
-    fn scope(&mut self, parent_scope: &mut Vec<Stmt>) -> Result<(), CompileError> {
+    fn parse_aux(&mut self, block: &mut Vec<Stmt>) -> Result<(), CompileError> {
+        loop {
+            let token = self.lexer.peek();
+            println!("[Parser] Parsing new statement.");
+            println!("[Parser] Peek token: {:?}", token);
+            if !self.program.stmts.is_empty() {
+                println!("[Parser] Statement: {}", self.program.stmts.last().unwrap())
+            }
+            match token.tokentype {
+                TT::StartOfFile | TT::NewLine => self.lexer.consume()?,
+
+                TT::If => {
+                    self.lexer.consume()?;
+                    self.if_(block)?;
+                }
+
+                TT::EndOfFile => {
+                    break;
+                }
+
+                TT::SCurly => block.push(self.block("")?),
+                TT::ECurly => return Ok(()),
+
+                TT::Let => {
+                    self.lexer.consume()?;
+                    self.decl_or_init(block)?;
+                }
+                TT::Ident(_) | TT::IntLiteral(_) => self.assign_stmt_or_rexp(block)?,
+                TT::Exit => self.exit(block)?,
+                _ => {
+                    return Err(CompileError::unexpected(
+                        token,
+                        "Invalid token for starting a statement",
+                    ))
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    fn if_(&mut self, parent_block: &mut Vec<Stmt>) -> Result<(), CompileError> {
+        let rexp = self.rexp("Expected an expression.")?;
+        let block = self.block("Expected a block of statemets.")?;
+        let Stmt::Block(block) = block else {
+            panic!("[Parser.if_] self.block somehow returned: {}", block);
+        };
+        parent_block.push(Stmt::If(rexp, block));
+        return Ok(());
+    }
+
+    fn block(&mut self, errmsg: impl Into<String>) -> Result<Stmt, CompileError> {
         let res = parse_terminal!(self.lexer, TT::SCurly);
         if res.is_err() {
-            return Err(CompileError::unexpected(
-                res.unwrap_err(),
-                "[Parser.scope] err 1",
-            ));
+            return Err(CompileError::unexpected(res.unwrap_err(), errmsg));
         }
-        let mut scope = Vec::<Stmt>::new();
-        self.parse_aux(&mut scope)?;
+        let mut block = Vec::<Stmt>::new();
+        self.parse_aux(&mut block)?;
         let res = parse_terminal!(self.lexer, TT::ECurly);
         if res.is_err() {
             return Err(CompileError::unexpected(
                 res.unwrap_err(),
-                "[Parser.scope] err 2",
+                "[Parser.block] Expected a ending curly brace.",
             ));
         }
-        parent_scope.push(Stmt::Scope(scope));
-        return Ok(());
+        return Ok(Stmt::Block(block));
     }
 
     fn assign(&mut self, errmsg: impl Into<String>) -> Result<(), CompileError> {
@@ -401,7 +412,7 @@ impl Parser {
         return Ok(());
     }
 
-    fn exit(&mut self, scope: &mut Vec<Stmt>) -> Result<(), CompileError> {
+    fn exit(&mut self, parent_block: &mut Vec<Stmt>) -> Result<(), CompileError> {
         match parse_terminal!(self.lexer, TT::Exit) {
             Ok(_) => (),
             Err(token) => return Err(CompileError::unexpected(token, "expected `exit` keyword")),
@@ -411,7 +422,7 @@ impl Parser {
             Ok(_) => (),
             Err(token) => return Err(CompileError::unexpected(token, "expected a newline")),
         };
-        scope.push(Stmt::Exit(rexp));
+        parent_block.push(Stmt::Exit(rexp));
         return Ok(());
     }
 
@@ -424,10 +435,10 @@ impl Parser {
         return Ok(());
     }
 
-    fn assign_stmt_or_rexp(&mut self, scope: &mut Vec<Stmt>) -> Result<(), CompileError> {
+    fn assign_stmt_or_rexp(&mut self, parent_block: &mut Vec<Stmt>) -> Result<(), CompileError> {
         let exp = self.rexp("");
         if exp.is_ok() && self.newline_or_eof("").is_ok() {
-            scope.push(Stmt::RExp(exp.unwrap()));
+            parent_block.push(Stmt::RExp(exp.unwrap()));
             return Ok(());
         }
 
@@ -445,14 +456,14 @@ impl Parser {
             Ok(_) => {}
             Err(_) => {
                 self.newline_or_eof("[assign_stmt_or_rexp] Expected a newline.")?;
-                scope.push(Stmt::RExp(lexp.into()));
+                parent_block.push(Stmt::RExp(lexp.into()));
                 return Ok(());
             }
         }
 
         println!("[Parser] next token: {:?}", self.lexer.peek());
         let rexp = self.rexp("What do I assign it to?")?;
-        scope.push(Stmt::Assign(lexp, rexp));
+        parent_block.push(Stmt::Assign(lexp, rexp));
         return Ok(());
     }
 
@@ -536,10 +547,10 @@ impl Parser {
         return Ok(token.into());
     }
 
-    fn decl_or_init(&mut self, scope: &mut Vec<Stmt>) -> Result<(), CompileError> {
+    fn decl_or_init(&mut self, parent_block: &mut Vec<Stmt>) -> Result<(), CompileError> {
         let ident = self.ident()?;
         if self.newline_or_eof("").is_ok() {
-            scope.push(Stmt::Declare(ident));
+            parent_block.push(Stmt::Declare(ident));
             return Ok(());
         }
 
@@ -549,7 +560,7 @@ impl Parser {
 
         self.newline_or_eof("[decl_or_init] Expected a newline.")?;
 
-        scope.push(Stmt::Initialize(ident, rexp));
+        parent_block.push(Stmt::Initialize(ident, rexp));
 
         return Ok(());
     }

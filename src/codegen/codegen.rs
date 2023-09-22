@@ -7,9 +7,11 @@ use std::{
 };
 
 use crate::{
-    parser::{Identifier, IntLiteral, LExp, Program, RExp, Stmt, Term},
+    parser::{Identifier, IntLiteral, LExp, RExp, Stmt, Term},
     CompileError,
 };
+
+use super::string_decorator::StringDecorator;
 
 #[derive(Debug)]
 pub struct Symbol {
@@ -94,7 +96,7 @@ impl Env {
         }
     }
 
-    fn get_shadow_count_in_head_mut(&mut self, lexeme: &str) -> &mut u32 {
+    fn get_shadow_count_mut(&mut self, lexeme: &str) -> &mut u32 {
         let count = self.shadow_counts.get_mut(lexeme);
         if count.is_some() {
             return unsafe { NonNull::from(count.unwrap()).as_mut() };
@@ -103,7 +105,7 @@ impl Env {
             return self.shadow_counts.get_mut(lexeme).unwrap();
         }
     }
-    fn get_shadow_count_in_head(&self, lexeme: &str) -> u32 {
+    fn get_shadow_count(&self, lexeme: &str) -> u32 {
         match self.shadow_counts.get(lexeme) {
             Some(count) => *count,
             None => 0,
@@ -111,7 +113,7 @@ impl Env {
     }
 
     fn get_symbol(&self, lexeme: &str) -> Option<&Symbol> {
-        let shadow_count = self.get_shadow_count_in_head(lexeme);
+        let shadow_count = self.get_shadow_count(lexeme);
         let decorated_lexeme = format!("{}_{}", lexeme, shadow_count);
         match self.symtable.get(&decorated_lexeme) {
             Some(sym) => return Some(sym),
@@ -126,7 +128,7 @@ impl Env {
     }
 
     fn register_symbol(&mut self, lexeme: &str, symbol_builder: &mut SymbolBuilder) {
-        let shadow_count = self.get_shadow_count_in_head_mut(lexeme);
+        let shadow_count = self.get_shadow_count_mut(lexeme);
         *shadow_count += 1;
         let decorated_lexeme = format!("{}_{}", lexeme, shadow_count);
         self.current_rbp_offset += 8;
@@ -156,6 +158,7 @@ impl Env {
 #[derive(Debug)]
 pub struct Asm {
     link_files: HashSet<String>,
+    label_decorator: StringDecorator,
     externals: Vec<String>,
     text: String,
 }
@@ -164,6 +167,7 @@ impl Default for Asm {
     fn default() -> Self {
         return Self {
             link_files: HashSet::from(["C:/windows/system32/kernel32.dll".into()]),
+            label_decorator: Default::default(),
             externals: vec!["ExitProcess".into()],
             text: Default::default(),
         };
@@ -182,12 +186,12 @@ impl Asm {
                     ));
                     let lexeme = &sym.decorated_lexeme;
                     self.stmt("");
-                    self.comment_emp(format!("let {}", lexeme));
+                    self.comment_emphasized(format!("let {}", lexeme));
                     self.stmt(format!("sub rsp, {}", sym.size_bytes));
                 }
                 Stmt::Initialize(l_ident, rexp) => {
                     self.stmt("");
-                    self.comment_emp(format!("let {} = {}", l_ident, rexp));
+                    self.comment_emphasized(format!("let {} = {}", l_ident, rexp));
                     self.stmt("");
 
                     self.rexp(rexp, env)?;
@@ -215,7 +219,7 @@ impl Asm {
                     };
                     let lexeme = &l_sym.decorated_lexeme;
                     self.stmt("");
-                    self.comment_emp(format!("{} = {}", lexeme, rexp));
+                    self.comment_emphasized(format!("{} = {}", lexeme, rexp));
                     self.rexp(rexp, env)?;
 
                     self.stmt("");
@@ -224,11 +228,11 @@ impl Asm {
                     self.stmt(&format!("mov qword [rbp-{}], rax", l_sym.rbp_offset));
                 }
                 Stmt::RExp(rexp) => {
-                    self.comment_emp(format!("{}", rexp));
+                    self.comment_emphasized(format!("{}", rexp));
                     self.rexp(rexp, env)?;
                 }
                 Stmt::Exit(rexp) => {
-                    self.comment_emp("");
+                    self.comment_emphasized("");
                     self.rexp(rexp, env)?;
                     self.stmt("");
                     self.comment(format!("exit {}", rexp));
@@ -236,9 +240,29 @@ impl Asm {
                     self.stmt("mov rcx, rax");
                     self.stmt("call ExitProcess");
                 }
-                Stmt::Scope(scope) => {
+                Stmt::Block(block) => {
+                    self.comment_emphasized("Block Start");
                     let mut new_env = Env::with_tail(&env);
-                    self.gen_aux(scope, &mut new_env)?;
+                    self.gen_aux(block, &mut new_env)?;
+                    self.comment_emphasized("Block End");
+                }
+                Stmt::If(rexp, block) => {
+                    let label = self
+                        .label_decorator
+                        .decorate_and_increment(String::from("if"));
+                    self.comment_emphasized(format!("if {} {{", rexp));
+                    self.rexp(rexp, env)?;
+
+                    self.comment(format!("{} == 0", rexp));
+                    self.stmt("pop rax");
+                    self.stmt("test rax, rax");
+                    self.stmt(format!("jz {}", label));
+
+                    let mut new_env = Env::with_tail(&env);
+                    self.gen_aux(block, &mut new_env)?;
+
+                    self.comment_emphasized("}");
+                    self.label(label);
                 }
 
                 _ => panic!("[Assembly Generation] Not implemented for Stmt: {}", stmt),
@@ -253,7 +277,7 @@ impl Asm {
         self.gen_aux(stmts, env)?;
 
         self.stmt("");
-        self.comment_emp("Exit with exit code 0");
+        self.comment_emphasized("exit 0");
         self.stmt("xor rcx, rcx");
         self.stmt("call ExitProcess");
         return Ok(());
@@ -274,7 +298,7 @@ impl Asm {
         self.text.push_str(comment.as_ref());
         self.text.push('\n');
     }
-    fn comment_emp(&mut self, comment: impl AsRef<str>) {
+    fn comment_emphasized(&mut self, comment: impl AsRef<str>) {
         self.text.push_str("    ; ################# ");
         self.text.push_str(comment.as_ref());
         self.text.push_str(" #################");
