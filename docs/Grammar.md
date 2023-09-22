@@ -1,30 +1,34 @@
-$Program \to [Stmt]^\text{*}$
+$Program \to (Stmt[Newline])^*$
 
 $Stmt \to \begin{cases}
-\text{let } [Ident] [NewLine] \\
-\text{let } [Ident] = [RExp] [NewLine] \\
-[RExp] [NewLine] \\
-[LExp] = [RExp] [NewLine] \\
-\text{exit } [RExp] [NewLine] \\
+    let~Ident\\
+    let~Ident~=~RExp \\
+    if~RExp~Block \\
+    Block \\
+    RExp \\
+    LExp~=~RExp \\
+    exit~RExp \\
 \end{cases}$
 
+$Block \to \{ (Stmt[Newline])^* \}$
+
 $RExp \to \begin{cases}
-    [Term] \\
-    [RExp] \text{ + }  [RExp] \\
-    [RExp] \text{ - }  [RExp] \\
-    [RExp] \text{ == } [RExp] \\
-    [RExp] \text{ != } [RExp] \\
-    [RExp] \text{ < }  [RExp] \\
-    [RExp] \text{ <= } [RExp] \\
-    [RExp] \text{ > }  [RExp] \\
-    [RExp] \text{ >= } [RExp] \\
+    RExp +  RExp \\
+    RExp -  RExp \\
+    RExp == RExp \\
+    RExp~\text{!=}~RExp \\
+    RExp <  RExp \\
+    RExp <= RExp \\
+    RExp >  RExp \\
+    RExp >= RExp \\
+    Term \\
 \end{cases}$
 
 $Term \to \begin{cases}
-    [IntLit] \\
-    [LExp] \\
-    -[Term] \\
-    ([RExp]) \\
+    IntLit \\
+    LExp \\
+    -Term \\
+    [OpeningBrace]RExp[ClosingBrace] \\
 \end{cases} \\$
 
-$LExp \to [Ident]$
+$LExp \to Ident$

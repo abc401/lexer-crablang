@@ -36,6 +36,17 @@ Following are examples of invalid identifiers:
 
 Following are the different types of keywords that are supported by toylang:
 
+### If
+
+The `if` keyword can be used for branching purposes in code. You also don't need to put the expression in brackets. Following is an example of using this keyword:
+
+```rust
+let a = 1
+if a {
+    exit 0
+}
+```
+
 ### Let
 
 The `let` keyword can be used to initialize or declare a variable.
@@ -48,7 +59,7 @@ The `exit` keyword can be used to exit at any part of the program with the desir
 
 Following is a brief description of the different operator tokens that toylang currently supports and what those tokens are meant to do:
 
-### Assignment:
+### Assignment
 
 The `=` character is used as the assignment operator and it can be used to assign values to variables.
 
