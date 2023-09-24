@@ -5,7 +5,7 @@ use std::{
     vec,
 };
 
-const DEBUG_TOKENS: bool = true;
+const DEBUG_TOKENS: bool = false;
 
 #[derive(Debug, Clone)]
 pub struct Token {
@@ -45,6 +45,7 @@ pub enum TokenType {
     Let,
     Exit,
     If,
+    Else,
 
     NewLine,
 
@@ -71,9 +72,6 @@ pub enum TokenType {
 use TokenType as TT;
 
 const TOKENTYPE_MAPPINGS: &[(&str, TT)] = &[
-    ("exit", TT::Exit),
-    ("let", TT::Let),
-    ("if", TT::If),
     ("==", TT::Equal),
     ("!=", TT::NotEqual),
     ("<=", TT::LessEqual),
@@ -111,7 +109,7 @@ pub struct Lexer {
     peek_ch: Option<char>,
     ch_cursor: usize,
 
-    loc: Location,
+    pub loc: Location,
     pub emit_newline: bool,
 }
 

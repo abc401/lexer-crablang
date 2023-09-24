@@ -215,7 +215,7 @@ impl Asm {
                     let l_sym = env.get_symbol(&l_ident.lexeme);
                     let l_sym = match l_sym {
                         Some(sym) => sym,
-                        None => return Err(CompileError::UseOfUndeclaredIdent(l_ident.clone())),
+                        None => return Err(CompileError::UndeclaredIdent(l_ident.clone())),
                     };
                     let lexeme = &l_sym.decorated_lexeme;
                     self.stmt("");
@@ -372,7 +372,7 @@ impl Asm {
         let sym = env.get_symbol(&ident.lexeme);
         let sym = match sym {
             Some(sym) => sym,
-            None => return Err(CompileError::UseOfUndeclaredIdent(ident.clone())),
+            None => return Err(CompileError::UndeclaredIdent(ident.clone())),
         };
         let lexeme = &sym.decorated_lexeme;
 

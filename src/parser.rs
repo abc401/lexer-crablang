@@ -1,14 +1,10 @@
 use crate::{
     lexer::{Location, Token, TokenType as TT},
-    CompileError,
+    CompileError, HandleNotFound,
 };
 
 use super::lexer::Lexer;
-use std::{
-    fmt::Display,
-    rc::Rc,
-    slice::{Iter, IterMut},
-};
+use std::{fmt::Display, rc::Rc};
 
 #[derive(Debug)]
 pub struct Program {
@@ -62,6 +58,12 @@ pub struct Identifier {
     pub lexeme: String,
 }
 
+impl Into<LExp> for Identifier {
+    fn into(self) -> LExp {
+        LExp::Ident(self)
+    }
+}
+
 impl Display for Identifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.lexeme)
@@ -90,6 +92,18 @@ pub enum Term {
     Bracketed(Box<RExp>),
 }
 
+impl TryFrom<Token> for Term {
+    type Error = Token;
+
+    fn try_from(value: Token) -> Result<Self, Self::Error> {
+        match value.tokentype {
+            TT::Ident(_) => Ok(Term::LExp(LExp::Ident(Identifier::from(value)))),
+            TT::IntLiteral(_) => Ok(Term::IntLit(IntLiteral::from(value))),
+            _ => Err(value),
+        }
+    }
+}
+
 impl Display for Term {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -99,16 +113,6 @@ impl Display for Term {
             Self::Bracketed(rexp) => write!(f, "({})", rexp),
             _ => panic!("[Display for Term] not implemented: {:?}", self),
         }
-    }
-}
-
-impl Program {
-    pub fn iter(&self) -> Iter<'_, Stmt> {
-        self.stmts.iter()
-    }
-
-    pub fn iter_mut(&mut self) -> IterMut<'_, Stmt> {
-        self.stmts.iter_mut()
     }
 }
 
@@ -122,6 +126,7 @@ pub enum Stmt {
     RExp(RExp),
     Block(Block),
     If(RExp, Block),
+    IfElse(RExp, Block, Block),
     Exit(RExp),
 }
 
@@ -239,12 +244,22 @@ pub enum LExp {
     Ident(Identifier),
 }
 impl TryFrom<RExp> for LExp {
-    type Error = ();
+    type Error = RExp;
     fn try_from(value: RExp) -> Result<Self, Self::Error> {
         return match value {
             RExp::Term(Term::LExp(lexp)) => Ok(lexp),
-            _ => Err(()),
+            _ => Err(value),
         };
+    }
+}
+
+impl TryFrom<Token> for LExp {
+    type Error = Token;
+    fn try_from(value: Token) -> Result<Self, Self::Error> {
+        match value.tokentype {
+            TT::Ident(_) => Ok(LExp::Ident(value.into())),
+            _ => Err(value),
+        }
     }
 }
 
@@ -301,12 +316,6 @@ macro_rules! parse_terminal {
     }};
 }
 
-macro_rules! stmt_terminator {
-    () => {
-        TT::EndOfFile | TT::NewLine
-    };
-}
-
 pub struct Parser {
     lexer: Lexer,
     rexp_nesting_level: u32,
@@ -322,162 +331,150 @@ impl Parser {
         };
     }
 
-    pub fn parse(&mut self) -> Result<(), CompileError> {
-        let mut stmts = Vec::<Stmt>::new();
-        self.parse_aux(&mut stmts)?;
-        if !self.lexer.is_eof() {
-            let token = self.lexer.peek();
-            return Err(CompileError::unexpected(
-                token,
-                "Could not parser source completely.",
-            ));
-        }
-        std::mem::swap(&mut self.program.stmts, &mut stmts);
-        return Ok(());
-    }
-
-    fn parse_aux(&mut self, block: &mut Vec<Stmt>) -> Result<(), CompileError> {
+    pub fn parse_program(&mut self) -> Result<(), CompileError> {
         loop {
-            let token = self.lexer.peek();
-            println!("[Parser] Parsing new statement.");
-            println!("[Parser] Peek token: {:?}", token);
-            if !self.program.stmts.is_empty() {
-                println!("[Parser] Statement: {}", self.program.stmts.last().unwrap())
+            loop {
+                match parse_terminal!(self.lexer, TT::NewLine | TT::StartOfFile) {
+                    Ok(token) => println!("[Parser.parse_program] Ok({:?})", token.tokentype),
+                    Err(token) => {
+                        println!("[Parser.parse_program] Err({:?})", token.tokentype);
+                        break;
+                    }
+                }
             }
-            match token.tokentype {
-                TT::StartOfFile | TT::NewLine => self.lexer.consume()?,
-
-                TT::If => {
-                    self.lexer.consume()?;
-                    self.if_(block)?;
-                }
-
-                TT::EndOfFile => {
-                    break;
-                }
-
-                TT::SCurly => block.push(self.block("")?),
-                TT::ECurly => return Ok(()),
-
-                TT::Let => {
-                    self.lexer.consume()?;
-                    self.decl_or_init(block)?;
-                }
-                TT::Ident(_) | TT::IntLiteral(_) => self.assign_stmt_or_rexp(block)?,
-                TT::Exit => self.exit(block)?,
-                _ => {
-                    return Err(CompileError::unexpected(
-                        token,
-                        "Invalid token for starting a statement",
-                    ))
-                }
+            match self.stmt() {
+                Ok(stmt) => self.program.stmts.push(stmt),
+                Err(CompileError::NotFound) => break,
+                Err(err) => return Err(err),
+            }
+            match parse_terminal!(self.lexer, TT::NewLine) {
+                Ok(_) => continue,
+                _ => (),
+            }
+            match parse_terminal!(self.lexer, TT::EndOfFile) {
+                Ok(_) => break,
+                Err(token) => return Err(CompileError::UnexpectedToken(token)),
             }
         }
         return Ok(());
     }
 
-    fn if_(&mut self, parent_block: &mut Vec<Stmt>) -> Result<(), CompileError> {
-        let rexp = self.rexp("Expected an expression.")?;
-        let block = self.block("Expected a block of statemets.")?;
-        let Stmt::Block(block) = block else {
-            panic!("[Parser.if_] self.block somehow returned: {}", block);
-        };
-        parent_block.push(Stmt::If(rexp, block));
-        return Ok(());
-    }
-
-    fn block(&mut self, errmsg: impl Into<String>) -> Result<Stmt, CompileError> {
-        let res = parse_terminal!(self.lexer, TT::SCurly);
-        if res.is_err() {
-            return Err(CompileError::unexpected(res.unwrap_err(), errmsg));
-        }
-        let mut block = Vec::<Stmt>::new();
-        self.parse_aux(&mut block)?;
-        let res = parse_terminal!(self.lexer, TT::ECurly);
-        if res.is_err() {
-            return Err(CompileError::unexpected(
-                res.unwrap_err(),
-                "[Parser.block] Expected a ending curly brace.",
-            ));
-        }
-        return Ok(Stmt::Block(block));
-    }
-
-    fn assign(&mut self, errmsg: impl Into<String>) -> Result<(), CompileError> {
+    fn stmt(&mut self) -> Result<Stmt, CompileError> {
         let token = self.lexer.peek();
-        if !matches!(token.tokentype, TT::Assign) {
-            return Err(CompileError::unexpected(token, errmsg));
-        }
-        self.lexer.consume()?;
-        return Ok(());
-    }
 
-    fn exit(&mut self, parent_block: &mut Vec<Stmt>) -> Result<(), CompileError> {
-        match parse_terminal!(self.lexer, TT::Exit) {
-            Ok(_) => (),
-            Err(token) => return Err(CompileError::unexpected(token, "expected `exit` keyword")),
+        let stmt = match token.tokentype {
+            TT::Let => self.decl_or_init(),
+            TT::Ident(_) | TT::IntLiteral(_) | TT::SBrace | TT::Minus => self.assign_stmt_or_rexp(),
+            TT::Exit => self.exit(),
+            TT::SCurly => self.block(),
+            TT::If => self.if_(),
+            _ => Err(CompileError::NotFound),
         };
-        let rexp = self.rexp("Expected an rexpression")?;
-        match parse_terminal!(self.lexer, stmt_terminator!()) {
-            Ok(_) => (),
-            Err(token) => return Err(CompileError::unexpected(token, "expected a newline")),
+        match stmt {
+            Ok(ref stmt) => println!("[Parser.stmt] Ok({})", stmt),
+            Err(ref err) => println!("[Parser.stmt] Err({:?})", err),
+        }
+        stmt
+    }
+
+    fn if_(&mut self) -> Result<Stmt, CompileError> {
+        match parse_terminal!(self.lexer, TT::If) {
+            Err(_) => return Err(CompileError::NotFound),
+            _ => (),
+        }
+        let rexp = self
+            .rexp()
+            .handle_not_found(CompileError::ExpectedExpression(self.lexer.peek().start))?;
+
+        let if_block = match self
+            .block()
+            .handle_not_found(CompileError::ExpectedBlock(self.lexer.peek().start))?
+        {
+            Stmt::Block(block) => block,
+            stmt => panic!("[Parser.if_] Parser.block returned: {}", stmt),
         };
-        parent_block.push(Stmt::Exit(rexp));
-        return Ok(());
+
+        match parse_terminal!(self.lexer, TT::Else) {
+            Err(_) => return Ok(Stmt::If(rexp, if_block)),
+            _ => (),
+        }
+
+        let else_block = match self
+            .block()
+            .handle_not_found(CompileError::ExpectedBlock(self.lexer.peek().start))?
+        {
+            Stmt::Block(block) => block,
+            stmt => panic!("[Parser.if_] Parser.block returned: {}", stmt),
+        };
+
+        return Ok(Stmt::IfElse(rexp, if_block, else_block));
     }
 
-    fn newline_or_eof(&mut self, errmsg: impl Into<String>) -> Result<(), CompileError> {
-        let token = self.lexer.peek();
-        if !matches!(token.tokentype, TT::NewLine | TT::EndOfFile) {
-            return Err(CompileError::unexpected(token, errmsg));
+    fn block(&mut self) -> Result<Stmt, CompileError> {
+        match parse_terminal!(self.lexer, TT::SCurly) {
+            Ok(_) => (),
+            Err(_) => return Err(CompileError::NotFound),
         }
-        self.lexer.consume()?;
-        return Ok(());
-    }
+        let mut stmts = Vec::<Stmt>::new();
 
-    fn assign_stmt_or_rexp(&mut self, parent_block: &mut Vec<Stmt>) -> Result<(), CompileError> {
-        let exp = self.rexp("");
-        if exp.is_ok() && self.newline_or_eof("").is_ok() {
-            parent_block.push(Stmt::RExp(exp.unwrap()));
-            return Ok(());
-        }
-
-        let lexp = LExp::try_from(exp.unwrap());
-        if lexp.is_err() {
-            return Err(CompileError::unexpected(
-                self.lexer.peek(),
-                "Expected an lexpression.",
-            ));
-        }
-        let lexp = lexp.unwrap();
-
-        let res = self.assign("");
-        match res {
-            Ok(_) => {}
-            Err(_) => {
-                self.newline_or_eof("[assign_stmt_or_rexp] Expected a newline.")?;
-                parent_block.push(Stmt::RExp(lexp.into()));
-                return Ok(());
+        loop {
+            while parse_terminal!(self.lexer, TT::NewLine).is_ok() {}
+            match self.stmt() {
+                Ok(stmt) => stmts.push(stmt),
+                Err(CompileError::NotFound) => break,
+                err => return err,
+            }
+            match parse_terminal!(self.lexer, TT::NewLine) {
+                Err(_) => break,
+                _ => (),
             }
         }
 
-        println!("[Parser] next token: {:?}", self.lexer.peek());
-        let rexp = self.rexp("What do I assign it to?")?;
-        parent_block.push(Stmt::Assign(lexp, rexp));
-        return Ok(());
+        match parse_terminal!(self.lexer, TT::ECurly) {
+            Ok(_) => (),
+            Err(token) => return Err(CompileError::ExpectedECurly(token.start)),
+        }
+        return Ok(Stmt::Block(stmts));
     }
 
-    fn rexp_min_prec(
-        &mut self,
-        min_prec: usize,
-        errmsg: impl Into<String>,
-    ) -> Result<RExp, CompileError> {
-        let mut rexp = self.term(errmsg)?.into();
+    fn exit(&mut self) -> Result<Stmt, CompileError> {
+        let exit_kw_loc = match parse_terminal!(self.lexer, TT::Exit) {
+            Ok(token) => token.end,
+            Err(_) => return Err(CompileError::NotFound),
+        };
+        let rexp = self
+            .rexp()
+            .handle_not_found(CompileError::ExpectedExpression(exit_kw_loc))?;
+        return Ok(Stmt::Exit(rexp));
+    }
+
+    fn assign_stmt_or_rexp(&mut self) -> Result<Stmt, CompileError> {
+        let exp = self
+            .rexp()
+            .handle_not_found(CompileError::ExpectedExpression(self.lexer.peek().start))?;
+        let assign_loc = match parse_terminal!(self.lexer, TT::Assign) {
+            Err(_) => return Ok(Stmt::RExp(exp)),
+            Ok(token) => token.end,
+        };
+
+        let lexp = match LExp::try_from(exp) {
+            Err(rexp) => return Err(CompileError::RExpOnLHS(rexp)),
+            Ok(lexp) => lexp,
+        };
+        let rexp = self
+            .rexp()
+            .handle_not_found(CompileError::ExpectedExpression(assign_loc))?;
+        return Ok(Stmt::Assign(lexp, rexp));
+    }
+
+    fn rexp_min_prec(&mut self, min_prec: usize) -> Result<RExp, CompileError> {
+        let mut rexp = self.term()?.into();
         loop {
             let op = self.lexer.peek();
             if !is_op(&op.tokentype) {
                 break;
             }
+            let op_location = op.end;
             let (prec, assoc) = op_prec_and_assoc(&op.tokentype);
             if prec < min_prec {
                 break;
@@ -487,30 +484,25 @@ impl Parser {
                 OpAssoc::Left => prec + 1,
                 OpAssoc::Right => prec,
             };
-            let rhs = self.rexp_min_prec(
-                next_min_prec,
-                format!("Expected rhs for binary operator: {:?}", op),
-            )?;
+            let rhs = self
+                .rexp_min_prec(next_min_prec)
+                .handle_not_found(CompileError::ExpectedExpression(op_location))?;
             rexp = RExp::combine(&op.tokentype, rexp, rhs)
         }
         return Ok(rexp);
     }
 
-    fn rexp(&mut self, errmsg: impl Into<String>) -> Result<RExp, CompileError> {
-        return self.rexp_min_prec(0, errmsg);
+    fn rexp(&mut self) -> Result<RExp, CompileError> {
+        return self.rexp_min_prec(0);
     }
 
-    fn term(&mut self, errmsg: impl Into<String>) -> Result<Term, CompileError> {
-        match parse_terminal!(self.lexer, TT::Ident(_)) {
-            Ok(token) => return Ok(Term::LExp(LExp::Ident(token.into()))),
-            _ => (),
-        }
-        match parse_terminal!(self.lexer, TT::IntLiteral(_)) {
-            Ok(token) => return Ok(Term::IntLit(token.into())),
+    fn term(&mut self) -> Result<Term, CompileError> {
+        match parse_terminal!(self.lexer, TT::Ident(_) | TT::IntLiteral(_)) {
+            Ok(token) => return Ok(token.try_into().unwrap()),
             _ => (),
         }
         match parse_terminal!(self.lexer, TT::Minus) {
-            Ok(_) => return Ok(Term::Neg(Box::new(self.term(errmsg)?))),
+            Ok(_) => return Ok(Term::Neg(Box::new(self.term()?))),
             _ => (),
         }
         let token = self.lexer.peek();
@@ -520,9 +512,11 @@ impl Parser {
                 self.lexer.emit_newline = false;
                 self.lexer.consume()?;
             }
-            _ => return Err(CompileError::unexpected(token, "Starting brace expected.")),
+            _ => return Err(CompileError::NotFound),
         }
-        let rexp = self.rexp(errmsg)?;
+        let rexp = self
+            .rexp()
+            .handle_not_found(CompileError::ExpectedExpression(self.lexer.peek().start))?;
         let token = self.lexer.peek();
         match token.tokentype {
             TT::EBrace => {
@@ -532,36 +526,29 @@ impl Parser {
                 }
                 self.lexer.consume()?;
             }
-            _ => return Err(CompileError::unexpected(token, "Ending brace expected.")),
+            _ => return Err(CompileError::UnexpectedToken(token)),
         }
         return Ok(Term::Bracketed(Box::new(rexp)));
     }
 
-    fn ident(&mut self) -> Result<Identifier, CompileError> {
-        let token = self.lexer.peek();
-        let TT::Ident(_) = token.tokentype else {
-
-            return Err(CompileError::unexpected(token, "Expected an identifier."));
+    fn decl_or_init(&mut self) -> Result<Stmt, CompileError> {
+        match parse_terminal!(self.lexer, TT::Let) {
+            Err(token) => panic!("[Parser.decl_or_init] Expected `let` but got: {:?}", token),
+            Ok(_) => (),
+        }
+        let ident = match parse_terminal!(self.lexer, TT::Ident(_)) {
+            Ok(token) => Identifier::from(token),
+            Err(token) => return Err(CompileError::ExpectedIdent(token.start)),
         };
-        self.lexer.consume()?;
-        return Ok(token.into());
-    }
 
-    fn decl_or_init(&mut self, parent_block: &mut Vec<Stmt>) -> Result<(), CompileError> {
-        let ident = self.ident()?;
-        if self.newline_or_eof("").is_ok() {
-            parent_block.push(Stmt::Declare(ident));
-            return Ok(());
+        match parse_terminal!(self.lexer, TT::Assign) {
+            Err(_) => return Ok(Stmt::Declare(ident)),
+            Ok(_) => (),
         }
 
-        self.assign("Expected an `=` sign.")?;
-
-        let rexp = self.rexp("What do I initialize it to?")?;
-
-        self.newline_or_eof("[decl_or_init] Expected a newline.")?;
-
-        parent_block.push(Stmt::Initialize(ident, rexp));
-
-        return Ok(());
+        let rexp = self
+            .rexp()
+            .handle_not_found(CompileError::ExpectedExpression(self.lexer.peek().start))?;
+        return Ok(Stmt::Initialize(ident.into(), rexp));
     }
 }

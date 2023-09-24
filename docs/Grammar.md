@@ -1,4 +1,4 @@
-$Program \to (Stmt[Newline])^*$
+$Program \to (Stmt)^*$
 
 $Stmt \to \begin{cases}
     let~Ident\\
@@ -10,7 +10,7 @@ $Stmt \to \begin{cases}
     exit~RExp \\
 \end{cases}$
 
-$Block \to \{ (Stmt[Newline])^* \}$
+$Block \to [LCurly]~Stmt^*~[RCurly]$
 
 $RExp \to \begin{cases}
     RExp +  RExp \\
@@ -28,7 +28,7 @@ $Term \to \begin{cases}
     IntLit \\
     LExp \\
     -Term \\
-    [OpeningBrace]RExp[ClosingBrace] \\
+    [LBrace]RExp[RBrace] \\
 \end{cases} \\$
 
 $LExp \to Ident$
