@@ -12,15 +12,25 @@ $Stmt \to \begin{cases}
 
 $Block \to [LCurly]~Stmt^*~[RCurly]$
 
-$RExp \to \begin{cases}
-    RExp +  RExp \\
-    RExp -  RExp \\
-    RExp == RExp \\
-    RExp~\text{!=}~RExp \\
-    RExp <  RExp \\
-    RExp <= RExp \\
-    RExp >  RExp \\
-    RExp >= RExp \\
+$RExp \to Compare$
+
+$Compare \to \begin{cases}
+    Add == Add \\
+    Add~\text{!=}~Add \\
+    Add <  Add \\
+    Add <= Add \\
+    Add >  Add \\
+    Add >= Add \\
+\end{cases}$
+
+$Add \to \begin{cases}
+    Mult~+~Mult \\
+    Mult~-~Mult \\
+\end{cases}$
+
+$Mult \to \begin{cases}
+    Term~*~Term \\
+    Term~/~Term \\
     Term \\
 \end{cases}$
 
