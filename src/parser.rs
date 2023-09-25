@@ -153,6 +153,18 @@ impl Display for Stmt {
                 writeln!(f, "}}")?;
                 return Ok(());
             }
+            Self::IfElse(rexp, if_block, else_block) => {
+                writeln!(f, "if {} {{", rexp)?;
+                for stmt in if_block {
+                    writeln!(f, "{}", stmt)?;
+                }
+                writeln!(f, "}} else {{")?;
+                for stmt in else_block {
+                    writeln!(f, "{}", stmt)?;
+                }
+                writeln!(f, "}}")?;
+                return Ok(());
+            }
 
             Self::Exit(rexp) => write!(f, "Exit({})", rexp),
             _ => panic!("[Display for Stmt] unimplemented: {:?}", self),
@@ -377,6 +389,11 @@ impl Parser {
         stmt
     }
 
+    fn skip_newlines(&mut self) -> Result<(), CompileError> {
+        while parse_terminal!(self.lexer, TT::NewLine).is_ok() {}
+        return Ok(());
+    }
+
     fn if_(&mut self) -> Result<Stmt, CompileError> {
         match parse_terminal!(self.lexer, TT::If) {
             Err(_) => return Err(CompileError::NotFound),
@@ -393,6 +410,8 @@ impl Parser {
             Stmt::Block(block) => block,
             stmt => panic!("[Parser.if_] Parser.block returned: {}", stmt),
         };
+
+        self.skip_newlines()?;
 
         match parse_terminal!(self.lexer, TT::Else) {
             Err(_) => return Ok(Stmt::If(rexp, if_block)),

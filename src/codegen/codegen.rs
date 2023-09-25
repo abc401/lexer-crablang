@@ -247,22 +247,53 @@ impl Asm {
                     self.comment_emphasized("Block End");
                 }
                 Stmt::If(rexp, block) => {
-                    let label = self
+                    let if_end_label = self
                         .label_decorator
-                        .decorate_and_increment(String::from("if"));
+                        .decorate_and_increment(String::from("if_end"));
                     self.comment_emphasized(format!("if {} {{", rexp));
                     self.rexp(rexp, env)?;
 
                     self.comment(format!("{} == 0", rexp));
                     self.stmt("pop rax");
                     self.stmt("test rax, rax");
-                    self.stmt(format!("jz {}", label));
+                    self.stmt(format!("jz {}", if_end_label));
 
                     let mut new_env = Env::with_tail(&env);
                     self.gen_aux(block, &mut new_env)?;
 
                     self.comment_emphasized("}");
-                    self.label(label);
+                    self.label(if_end_label);
+                }
+                Stmt::IfElse(rexp, if_block, else_block) => {
+                    let else_start_label = self
+                        .label_decorator
+                        .decorate_and_increment(String::from("else_start"));
+                    let else_end_label = self
+                        .label_decorator
+                        .decorate_and_increment(String::from("else_end"));
+
+                    // evaluate condition expression
+                    self.comment_emphasized(format!("if {} {{", rexp));
+                    self.rexp(rexp, env)?;
+
+                    // check if condition is true
+                    self.comment(format!("{} == 0", rexp));
+                    self.stmt("pop rax");
+                    self.stmt("test rax, rax");
+                    self.stmt(format!("jz {}", else_start_label));
+
+                    // if block
+                    let mut new_env = Env::with_tail(&env);
+                    self.gen_aux(if_block, &mut new_env)?;
+                    self.comment_emphasized("}");
+                    self.stmt(format!("jmp {}", else_end_label));
+
+                    // else block
+                    self.label(else_start_label);
+                    self.comment_emphasized("else {{");
+                    self.gen_aux(else_block, &mut new_env)?;
+                    self.comment_emphasized("}}");
+                    self.label(else_end_label);
                 }
 
                 _ => panic!("[Assembly Generation] Not implemented for Stmt: {}", stmt),

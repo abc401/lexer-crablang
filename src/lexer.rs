@@ -5,7 +5,7 @@ use std::{
     vec,
 };
 
-const DEBUG_TOKENS: bool = false;
+const DEBUG_TOKENS: bool = true;
 
 #[derive(Debug, Clone)]
 pub struct Token {
@@ -303,9 +303,10 @@ impl Lexer {
         }
 
         match lexeme.as_str() {
+            "else" => self.set_next_token(TT::Else),
+            "exit" => self.set_next_token(TT::Exit),
             "let" => self.set_next_token(TT::Let),
             "if" => self.set_next_token(TT::If),
-            "exit" => self.set_next_token(TT::Exit),
             _ => self.set_next_token(TT::Ident(lexeme)),
         };
     }
