@@ -21,6 +21,7 @@ pub enum CompileError {
     ExpectedEBrace(Location),
     ExpectedECurly(Location),
     ExpectedBlock(Location),
+    ExpectedNewline(Location),
     // This error is only used internally in the parser and is not intended to reach the user.
     // It is used to signify that the parser couldn't find the terminals
     // that appear at the start of the requested language construct
@@ -66,8 +67,7 @@ fn main() -> std::io::Result<()> {
     //     parser.program
     // );
     let mut asm = Asm::default();
-    let mut env = Env::new();
-    let res = asm.gen(&parser.program.stmts, &mut env);
+    let res = asm.gen(&parser.program.stmts);
     match res {
         Err(err) => {
             println!("Error: {:?}", err);

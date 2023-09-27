@@ -175,96 +175,89 @@ impl Default for Asm {
 }
 
 impl Asm {
-    fn gen_aux(&mut self, stmts: &Vec<Stmt>, env: &mut Env) -> Result<(), CompileError> {
-        for stmt in stmts.iter() {
-            match stmt {
-                Stmt::Declare(ident) => {
-                    env.declare(ident);
-                    let sym = env.get_symbol(&ident.lexeme).expect(&format!(
-                        "[AsmGen.gen] Identifier {:?} was not declared properly.",
-                        ident
-                    ));
-                    let lexeme = &sym.decorated_lexeme;
-                    self.stmt("");
-                    self.comment_emphasized(format!("let {}", lexeme));
-                    self.stmt(format!("sub rsp, {}", sym.size_bytes));
-                }
-                Stmt::Initialize(l_ident, rexp) => {
-                    self.stmt("");
-                    self.comment_emphasized(format!("let {} = {}", l_ident, rexp));
-                    self.stmt("");
+    fn gen_stmt(&mut self, stmt: &Stmt, env: &mut Env) -> Result<(), CompileError> {
+        match stmt {
+            Stmt::Declare(ident) => {
+                env.declare(ident);
+                let sym = env.get_symbol(&ident.lexeme).expect(&format!(
+                    "[AsmGen.gen] Identifier {:?} was not declared properly.",
+                    ident
+                ));
+                let lexeme = &sym.decorated_lexeme;
+                self.stmt("");
+                self.comment(format!("let {}", lexeme));
+                self.stmt(format!("sub rsp, {}", sym.size_bytes));
+            }
+            Stmt::Initialize(l_ident, rexp) => {
+                self.stmt("");
+                self.comment(format!("let {} = {}", l_ident, rexp));
+                self.stmt("");
 
-                    self.rexp(rexp, env)?;
+                self.rexp(rexp, env)?;
 
-                    env.initialize(l_ident);
-                    let l_sym = env.get_symbol(&l_ident.lexeme).expect(&format!(
-                        "[AsmGen.gen] Identifier {:?} was not initialized properly.",
-                        l_ident
-                    ));
-                    let lexeme = &l_sym.decorated_lexeme;
+                env.initialize(l_ident);
+                let l_sym = env.get_symbol(&l_ident.lexeme).expect(&format!(
+                    "[AsmGen.gen] Identifier {:?} was not initialized properly.",
+                    l_ident
+                ));
+                let lexeme = &l_sym.decorated_lexeme;
 
-                    self.stmt("");
-                    self.comment(&format!("let {} = {}", lexeme, rexp));
+                self.stmt("");
+                self.comment(&format!("let {} = {}", lexeme, rexp));
 
-                    self.stmt("pop rax");
-                    self.stmt(&format!("sub rsp, {}", l_sym.size_bytes));
-                    self.stmt(&format!("mov qword [rbp-{}], rax", l_sym.rbp_offset));
-                }
-                Stmt::Assign(lexp, rexp) => {
-                    let LExp::Ident(l_ident) = lexp;
-                    let l_sym = env.get_symbol(&l_ident.lexeme);
-                    let l_sym = match l_sym {
-                        Some(sym) => sym,
-                        None => return Err(CompileError::UndeclaredIdent(l_ident.clone())),
-                    };
-                    let lexeme = &l_sym.decorated_lexeme;
-                    self.stmt("");
-                    self.comment_emphasized(format!("{} = {}", lexeme, rexp));
-                    self.rexp(rexp, env)?;
+                self.stmt("pop rax");
+                self.stmt(&format!("sub rsp, {}", l_sym.size_bytes));
+                self.stmt(&format!("mov qword [rbp-{}], rax", l_sym.rbp_offset));
+            }
+            Stmt::Assign(lexp, rexp) => {
+                let LExp::Ident(l_ident) = lexp;
+                let l_sym = env.get_symbol(&l_ident.lexeme);
+                let l_sym = match l_sym {
+                    Some(sym) => sym,
+                    None => return Err(CompileError::UndeclaredIdent(l_ident.clone())),
+                };
+                let lexeme = &l_sym.decorated_lexeme;
+                self.stmt("");
+                self.comment(format!("{} = {}", lexeme, rexp));
+                self.rexp(rexp, env)?;
 
-                    self.stmt("");
-                    self.comment(format!("{} = {}", lexeme, rexp));
-                    self.stmt("pop rax");
-                    self.stmt(&format!("mov qword [rbp-{}], rax", l_sym.rbp_offset));
-                }
-                Stmt::RExp(rexp) => {
-                    self.comment_emphasized(format!("{}", rexp));
-                    self.rexp(rexp, env)?;
-                }
-                Stmt::Exit(rexp) => {
-                    self.comment_emphasized("");
-                    self.rexp(rexp, env)?;
-                    self.stmt("");
-                    self.comment(format!("exit {}", rexp));
-                    self.stmt("pop rax");
-                    self.stmt("mov rcx, rax");
-                    self.stmt("call ExitProcess");
-                }
-                Stmt::Block(block) => {
-                    self.comment_emphasized("Block Start");
-                    let mut new_env = Env::with_tail(&env);
-                    self.gen_aux(block, &mut new_env)?;
-                    self.comment_emphasized("Block End");
-                }
-                Stmt::If(rexp, block) => {
-                    let if_end_label = self
+                self.stmt("");
+                self.comment(format!("{} = {}", lexeme, rexp));
+                self.stmt("pop rax");
+                self.stmt(&format!("mov qword [rbp-{}], rax", l_sym.rbp_offset));
+            }
+            Stmt::RExp(rexp) => {
+                self.comment(format!("{}", rexp));
+                self.rexp(rexp, env)?;
+            }
+            Stmt::Exit(rexp) => {
+                self.rexp(rexp, env)?;
+                self.stmt("");
+                self.comment(format!("exit {}", rexp));
+                self.stmt("pop rax");
+                self.stmt("mov rcx, rax");
+                self.stmt("call ExitProcess");
+            }
+            Stmt::Block(block) => self.gen_block(block, Some(env))?,
+            Stmt::If(rexp, if_block, else_block) => {
+                if else_block.is_none() {
+                    let end_if_label = self
                         .label_decorator
-                        .decorate_and_increment(String::from("if_end"));
-                    self.comment_emphasized(format!("if {} {{", rexp));
+                        .decorate_and_increment(String::from("end_if"));
+
                     self.rexp(rexp, env)?;
 
                     self.comment(format!("{} == 0", rexp));
                     self.stmt("pop rax");
                     self.stmt("test rax, rax");
-                    self.stmt(format!("jz {}", if_end_label));
+                    self.stmt(format!("jz {}", end_if_label));
 
-                    let mut new_env = Env::with_tail(&env);
-                    self.gen_aux(block, &mut new_env)?;
+                    self.comment("if");
+                    self.gen_block(if_block, Some(env))?;
+                    self.label(end_if_label);
+                } else {
+                    let else_stmt = else_block.as_ref().unwrap().as_ref();
 
-                    self.comment_emphasized("}");
-                    self.label(if_end_label);
-                }
-                Stmt::IfElse(rexp, if_block, else_block) => {
                     let else_start_label = self
                         .label_decorator
                         .decorate_and_increment(String::from("else_start"));
@@ -272,43 +265,66 @@ impl Asm {
                         .label_decorator
                         .decorate_and_increment(String::from("else_end"));
 
-                    // evaluate condition expression
-                    self.comment_emphasized(format!("if {} {{", rexp));
                     self.rexp(rexp, env)?;
 
-                    // check if condition is true
                     self.comment(format!("{} == 0", rexp));
                     self.stmt("pop rax");
                     self.stmt("test rax, rax");
                     self.stmt(format!("jz {}", else_start_label));
 
-                    // if block
-                    let mut new_env = Env::with_tail(&env);
-                    self.gen_aux(if_block, &mut new_env)?;
-                    self.comment_emphasized("}");
+                    self.comment("if");
+                    self.gen_block(if_block, Some(env))?;
                     self.stmt(format!("jmp {}", else_end_label));
 
-                    // else block
                     self.label(else_start_label);
-                    self.comment_emphasized("else {{");
-                    self.gen_aux(else_block, &mut new_env)?;
-                    self.comment_emphasized("}}");
+                    match else_stmt {
+                        Stmt::Block(block) => {
+                            self.comment("else {");
+                            self.gen_block(block, Some(env))?;
+                            self.comment("}");
+                        }
+                        else_if if else_stmt.is_if() => {
+                            self.comment("else if {");
+                            self.gen_stmt(else_if, env)?;
+                            self.comment("}");
+                        }
+                        else_stmt => panic!(
+                            "[Display for Stmt] else_block in if contains: {:?}",
+                            else_stmt
+                        ),
+                    }
+
                     self.label(else_end_label);
                 }
-
-                _ => panic!("[Assembly Generation] Not implemented for Stmt: {}", stmt),
             }
+            _ => panic!("[Assembly Generation] Not implemented for Stmt: {}", stmt),
         }
         return Ok(());
     }
-    pub fn gen(&mut self, stmts: &Vec<Stmt>, env: &mut Env) -> Result<(), CompileError> {
+    fn gen_block(
+        &mut self,
+        stmts: &[Stmt],
+        previous_env: Option<&Env>,
+    ) -> Result<(), CompileError> {
+        let mut new_env = match previous_env {
+            None => Env::new(),
+            Some(previous_env) => Env::with_tail(previous_env),
+        };
+        self.comment("{");
+        for stmt in stmts.iter() {
+            self.gen_stmt(stmt, &mut new_env)?;
+        }
+        self.comment("}");
+        return Ok(());
+    }
+    pub fn gen(&mut self, stmts: &[Stmt]) -> Result<(), CompileError> {
         self.label("_start");
         self.stmt("mov rbp, rsp");
 
-        self.gen_aux(stmts, env)?;
+        self.gen_block(stmts, None)?;
 
         self.stmt("");
-        self.comment_emphasized("exit 0");
+        self.comment("exit 0");
         self.stmt("xor rcx, rcx");
         self.stmt("call ExitProcess");
         return Ok(());
@@ -327,12 +343,6 @@ impl Asm {
     fn comment(&mut self, comment: impl AsRef<str>) {
         self.text.push_str("    ; ");
         self.text.push_str(comment.as_ref());
-        self.text.push('\n');
-    }
-    fn comment_emphasized(&mut self, comment: impl AsRef<str>) {
-        self.text.push_str("    ; ################# ");
-        self.text.push_str(comment.as_ref());
-        self.text.push_str(" #################");
         self.text.push('\n');
     }
 

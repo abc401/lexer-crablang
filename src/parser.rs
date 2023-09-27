@@ -125,9 +125,17 @@ pub enum Stmt {
     Assign(LExp, RExp),
     RExp(RExp),
     Block(Block),
-    If(RExp, Block),
-    IfElse(RExp, Block, Block),
+    If(RExp, Block, Option<Box<Stmt>>),
     Exit(RExp),
+}
+
+impl Stmt {
+    pub fn is_if(&self) -> bool {
+        match self {
+            Self::If(_, _, _) => true,
+            _ => false,
+        }
+    }
 }
 
 impl Display for Stmt {
@@ -145,24 +153,37 @@ impl Display for Stmt {
                 writeln!(f, "}}")?;
                 return Ok(());
             }
-            Self::If(rexp, block) => {
-                writeln!(f, "if {} {{", rexp)?;
-                for stmt in block {
-                    writeln!(f, "{}", stmt)?;
-                }
-                writeln!(f, "}}")?;
-                return Ok(());
-            }
-            Self::IfElse(rexp, if_block, else_block) => {
+            Self::If(rexp, if_block, else_block) => {
                 writeln!(f, "if {} {{", rexp)?;
                 for stmt in if_block {
                     writeln!(f, "{}", stmt)?;
                 }
-                writeln!(f, "}} else {{")?;
-                for stmt in else_block {
-                    writeln!(f, "{}", stmt)?;
+                write!(f, "}}")?;
+                let else_stmt = match else_block {
+                    None => return writeln!(f),
+                    Some(else_box) => {
+                        write!(f, " else ")?;
+                        else_box.as_ref()
+                    }
+                };
+                match else_stmt {
+                    Stmt::Block(else_stmts) => {
+                        writeln!(f, "{{")?;
+                        for stmt in else_stmts {
+                            writeln!(f, "{}", stmt)?;
+                        }
+
+                        write!(f, "}}")?;
+                    }
+                    stmt if stmt.is_if() => write!(f, "{}", stmt)?,
+                    else_stmt => {
+                        panic!(
+                            "[Display for Stmt] else_block in if contains: {:?}",
+                            else_stmt
+                        )
+                    }
                 }
-                writeln!(f, "}}")?;
+
                 return Ok(());
             }
 
@@ -345,27 +366,25 @@ impl Parser {
 
     pub fn parse_program(&mut self) -> Result<(), CompileError> {
         loop {
-            loop {
-                match parse_terminal!(self.lexer, TT::NewLine | TT::StartOfFile) {
-                    Ok(token) => println!("[Parser.parse_program] Ok({:?})", token.tokentype),
-                    Err(token) => {
-                        println!("[Parser.parse_program] Err({:?})", token.tokentype);
-                        break;
-                    }
-                }
-            }
+            let skipped_newlines = self.skip_newlines()?;
+            println!("{}", skipped_newlines);
+            println!("peek: {:?}", self.lexer.peek());
             match self.stmt() {
                 Ok(stmt) => self.program.stmts.push(stmt),
-                Err(CompileError::NotFound) => break,
+                Err(CompileError::NotFound) => {
+                    println!("Notfound");
+                    break;
+                }
                 Err(err) => return Err(err),
             }
+
             match parse_terminal!(self.lexer, TT::NewLine) {
                 Ok(_) => continue,
                 _ => (),
             }
             match parse_terminal!(self.lexer, TT::EndOfFile) {
                 Ok(_) => break,
-                Err(token) => return Err(CompileError::UnexpectedToken(token)),
+                Err(token) => return Err(CompileError::ExpectedNewline(token.start)),
             }
         }
         return Ok(());
@@ -389,9 +408,12 @@ impl Parser {
         stmt
     }
 
-    fn skip_newlines(&mut self) -> Result<(), CompileError> {
-        while parse_terminal!(self.lexer, TT::NewLine).is_ok() {}
-        return Ok(());
+    fn skip_newlines(&mut self) -> Result<bool, CompileError> {
+        let mut newlines_skipped = false;
+        while parse_terminal!(self.lexer, TT::NewLine | TT::StartOfFile).is_ok() {
+            newlines_skipped = true;
+        }
+        return Ok(newlines_skipped);
     }
 
     fn if_(&mut self) -> Result<Stmt, CompileError> {
@@ -411,22 +433,33 @@ impl Parser {
             stmt => panic!("[Parser.if_] Parser.block returned: {}", stmt),
         };
 
-        self.skip_newlines()?;
+        let newlines_skipped = self.skip_newlines()?;
 
         match parse_terminal!(self.lexer, TT::Else) {
-            Err(_) => return Ok(Stmt::If(rexp, if_block)),
+            Err(_) => {
+                if newlines_skipped {
+                    self.lexer.rewind()
+                }
+                return Ok(Stmt::If(rexp, if_block, None));
+            }
             _ => (),
         }
 
-        let else_block = match self
-            .block()
-            .handle_not_found(CompileError::ExpectedBlock(self.lexer.peek().start))?
-        {
-            Stmt::Block(block) => block,
-            stmt => panic!("[Parser.if_] Parser.block returned: {}", stmt),
-        };
+        match self.if_() {
+            Ok(else_if_block) => {
+                return Ok(Stmt::If(rexp, if_block, Some(Box::new(else_if_block))))
+            }
+            Err(CompileError::NotFound) => (),
+            Err(err) => return Err(err),
+        }
 
-        return Ok(Stmt::IfElse(rexp, if_block, else_block));
+        match self.block() {
+            Ok(else_block) => return Ok(Stmt::If(rexp, if_block, Some(Box::new(else_block)))),
+            Err(CompileError::NotFound) => {
+                return Err(CompileError::ExpectedBlock(self.lexer.peek().start))
+            }
+            Err(err) => return Err(err),
+        }
     }
 
     fn block(&mut self) -> Result<Stmt, CompileError> {
