@@ -273,10 +273,25 @@ impl Lexer {
     }
 
     fn skip_whitespace(&mut self) {
-        while self.peek_ch.map_or(false, |ch| {
-            (ch != '\n' && ch.is_whitespace()) || (ch == '\n' && !self.emit_newline)
-        }) {
-            self.consume_ch();
+        loop {
+            let mut skipped = false;
+            while self.peek_ch.map_or(false, |ch| {
+                (ch != '\n' && ch.is_whitespace()) || (ch == '\n' && !self.emit_newline)
+            }) {
+                skipped = true;
+                self.consume_ch();
+            }
+            if self.try_consume_str("//") {
+                skipped = true;
+                while self.peek_ch.map_or(false, |ch| ch != '\n') {
+                    self.consume_ch();
+                }
+            }
+            println!();
+
+            if !skipped {
+                break;
+            }
         }
     }
 
@@ -347,7 +362,7 @@ mod tests {
     fn illegal_tokens() {
         let source = String::from(
             r#"
-        12dsa2&@$
+        12dsa2&@$ // daj3432;ah43nq390h43;tq443q&$*@&@%@0 
         "#,
         );
         use TokenType::*;
@@ -376,7 +391,7 @@ mod tests {
     fn legal_tokens() {
         let source = String::from(
             r#"
-a 
+a //fsaf
 b  a1352 _ _ab
 
 325252 1234
