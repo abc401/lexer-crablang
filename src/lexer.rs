@@ -5,11 +5,11 @@ use std::{
     vec,
 };
 
-const DEBUG_TOKENS: bool = true;
+const DEBUG_TOKENS: bool = false;
 
 #[derive(Debug, Clone)]
 pub struct Token {
-    pub file: Rc<str>,
+    pub file: Option<Rc<str>>,
     pub start: Location,
     pub end: Location,
     pub tokentype: TokenType,
@@ -114,10 +114,9 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    pub fn from_file(path: Rc<str>) -> Self {
-        let source = read_to_string(path.as_ref()).expect("Provided input file does not exist!");
+    pub fn new(source: String) -> Self {
         let first_token = Token {
-            file: path.clone(),
+            file: None,
             start: Location::default(),
             end: Location::default(),
             tokentype: TT::StartOfFile,
@@ -127,7 +126,35 @@ impl Lexer {
             peek_ch: None,
             tokens: vec![first_token],
             next_token: Token {
-                file: path.clone(),
+                file: None,
+                start: Location::default(),
+                end: Location::default(),
+                tokentype: TT::StartOfFile,
+            },
+            ch_cursor: 0,
+            token_cursor: 0,
+            loc: Location::default(),
+            emit_newline: true,
+        };
+        if ret.source.len() > 0 {
+            ret.peek_ch = Some(ret.source[0]);
+        }
+        return ret;
+    }
+    pub fn from_file(path: Rc<str>) -> Self {
+        let source = read_to_string(path.as_ref()).expect("Provided input file does not exist!");
+        let first_token = Token {
+            file: Some(path.clone()),
+            start: Location::default(),
+            end: Location::default(),
+            tokentype: TT::StartOfFile,
+        };
+        let mut ret = Self {
+            source: source.chars().collect(),
+            peek_ch: None,
+            tokens: vec![first_token],
+            next_token: Token {
+                file: Some(path.clone()),
                 start: Location::default(),
                 end: Location::default(),
                 tokentype: TT::StartOfFile,
@@ -217,6 +244,7 @@ impl Lexer {
             ch if ch.is_ascii_digit() => self.int_literal()?,
             ch => {
                 self.set_next_token(TT::Illegal(String::from(ch)));
+                self.consume_ch();
                 return Err(CompileError::IllegalToken(self.peek()));
             }
         };
@@ -280,7 +308,6 @@ impl Lexer {
         }
 
         self.set_next_token(TT::IntLiteral(lexeme));
-        // println!("[Lexer] [IntLiteral] {:?}", self.peek());
         return Ok(());
     }
 
@@ -309,5 +336,119 @@ impl Lexer {
             "if" => self.set_next_token(TT::If),
             _ => self.set_next_token(TT::Ident(lexeme)),
         };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn illegal_tokens() {
+        let source = String::from(
+            r#"
+        12dsa2&@$
+        "#,
+        );
+        use TokenType::*;
+        let expected = [
+            StartOfFile,
+            NewLine,
+            Illegal(String::from("12dsa2")),
+            Illegal(String::from("&")),
+            Illegal(String::from("@")),
+            Illegal(String::from("$")),
+            NewLine,
+            EndOfFile,
+        ];
+        let mut lexer = Lexer::new(source);
+        let mut i = 0;
+        while !lexer.is_eof() {
+            let tokentype = &expected[i];
+            println!("{:?}, {:?}", lexer.peek().tokentype, tokentype);
+            assert_eq!(lexer.peek().tokentype, *tokentype);
+            i += 1;
+            let _ = lexer.consume();
+        }
+    }
+
+    #[test]
+    fn legal_tokens() {
+        let source = String::from(
+            r#"
+a 
+b  a1352 _ _ab
+
+325252 1234
+
+let exit if else 
+
+= + - * /
+== != < <= > >=
+
+{ } {}
+( ) ()
+
+        "#,
+        );
+
+        use TokenType::*;
+        let expected_result = [
+            StartOfFile,
+            NewLine,
+            Ident(String::from("a")),
+            NewLine,
+            Ident(String::from("b")),
+            Ident(String::from("a1352")),
+            Ident(String::from("_")),
+            Ident(String::from("_ab")),
+            NewLine,
+            NewLine,
+            IntLiteral(String::from("325252")),
+            IntLiteral(String::from("1234")),
+            NewLine,
+            NewLine,
+            Let,
+            Exit,
+            If,
+            Else,
+            NewLine,
+            NewLine,
+            Assign,
+            Plus,
+            Minus,
+            Asterisk,
+            ForwardSlash,
+            NewLine,
+            Equal,
+            NotEqual,
+            Less,
+            LessEqual,
+            Greater,
+            GreaterEqual,
+            NewLine,
+            NewLine,
+            SCurly,
+            ECurly,
+            SCurly,
+            ECurly,
+            NewLine,
+            SBrace,
+            EBrace,
+            SBrace,
+            EBrace,
+            NewLine,
+            NewLine,
+            EndOfFile,
+        ];
+        let mut lexer = Lexer::new(source);
+        let mut i = 0;
+        while !lexer.is_eof() {
+            let tokentype = &expected_result[i];
+            println!("{:?}, {:?}", tokentype, lexer.peek().tokentype);
+            assert_eq!(lexer.peek().tokentype, *tokentype);
+            lexer.consume().unwrap();
+            i += 1;
+        }
     }
 }

@@ -25,7 +25,7 @@ impl Display for Program {
 
 #[derive(Debug)]
 pub struct IntLiteral {
-    pub file: Rc<str>,
+    pub file: Option<Rc<str>>,
     pub start: Location,
     pub end: Location,
     pub lexeme: String,
@@ -52,7 +52,7 @@ impl From<Token> for IntLiteral {
 
 #[derive(Debug, Clone)]
 pub struct Identifier {
-    pub file: Rc<str>,
+    pub file: Option<Rc<str>>,
     pub start: Location,
     pub end: Location,
     pub lexeme: String,
@@ -356,6 +356,13 @@ pub struct Parser {
 }
 
 impl Parser {
+    pub fn new(source: String) -> Self {
+        return Self {
+            lexer: Lexer::new(source),
+            program: Program { stmts: Vec::new() },
+            rexp_nesting_level: 0,
+        };
+    }
     pub fn from_file(path: Rc<str>) -> Self {
         return Self {
             lexer: Lexer::from_file(path),
@@ -366,9 +373,7 @@ impl Parser {
 
     pub fn parse_program(&mut self) -> Result<(), CompileError> {
         loop {
-            let skipped_newlines = self.skip_newlines()?;
-            println!("{}", skipped_newlines);
-            println!("peek: {:?}", self.lexer.peek());
+            self.skip_newlines()?;
             match self.stmt() {
                 Ok(stmt) => self.program.stmts.push(stmt),
                 Err(CompileError::NotFound) => {
@@ -433,15 +438,11 @@ impl Parser {
             stmt => panic!("[Parser.if_] Parser.block returned: {}", stmt),
         };
 
-        let newlines_skipped = self.skip_newlines()?;
-
         match parse_terminal!(self.lexer, TT::Else) {
             Err(_) => {
-                if newlines_skipped {
-                    self.lexer.rewind()
-                }
                 return Ok(Stmt::If(rexp, if_block, None));
             }
+
             _ => (),
         }
 
